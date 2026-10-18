@@ -1,11 +1,13 @@
-import * as path from 'node:path';
 import * as vscode from 'vscode';
+import { changedRanges, toRepoRelative, type LineRange } from '@change-spotlight/core';
 import { startBridgeClient } from './bridge';
-import { changedLines, repoRoot, type ChangedLines } from './git';
+import { ChangeTracker } from './changeTracker';
+import { describeBase, findRepo, type ChangeResult } from './git';
 
 let output: vscode.OutputChannel;
 let dot: vscode.TextEditorDecorationType;
-let lastResult: { root: string; changes: ChangedLines } | undefined;
+let ranges = new Map<string, LineRange[]>();
+let repoRoot: string | undefined;
 
 export function activate(context: vscode.ExtensionContext): void {
   output = vscode.window.createOutputChannel('Change Spotlight');
@@ -13,56 +15,69 @@ export function activate(context: vscode.ExtensionContext): void {
     gutterIconPath: vscode.Uri.joinPath(context.extensionUri, 'media', 'dot.svg'),
     gutterIconSize: 'contain',
   });
+  context.subscriptions.push(output, dot, vscode.window.onDidChangeVisibleTextEditors(() => decorateVisibleEditors()));
 
-  context.subscriptions.push(
-    output,
-    dot,
-    vscode.commands.registerCommand('changeSpotlight.spike.showChanges', showChanges),
-    // Editors opened after the command ran should get their dots too.
-    vscode.window.onDidChangeVisibleTextEditors(() => decorateVisibleEditors()),
-  );
-
-  const folder = vscode.workspace.workspaceFolders?.[0];
-  if (folder) {
-    repoRoot(folder.uri.fsPath).then(
-      (root) => context.subscriptions.push(startBridgeClient(root, output)),
-      () => output.appendLine('Not a git repository; browser bridge not started.'),
-    );
-  }
+  void start(context);
 }
 
-async function showChanges(): Promise<void> {
-  const folder = vscode.workspace.workspaceFolders?.[0];
+async function start(context: vscode.ExtensionContext): Promise<void> {
+  const folders = vscode.workspace.workspaceFolders ?? [];
+  const folder = folders[0];
   if (!folder) {
     output.appendLine('No workspace folder open.');
     return;
   }
-  try {
-    const root = await repoRoot(folder.uri.fsPath);
-    const changes = await changedLines(root);
-    lastResult = { root, changes };
+  if (folders.length > 1) output.appendLine(`Multiple workspace folders: only "${folder.name}" is tracked.`);
 
-    output.appendLine(`Base: ${changes.base}`);
-    for (const [file, lines] of changes.files) {
-      output.appendLine(`  ${file}: ${lines.length} changed line(s)`);
-    }
-    output.show(true);
-    decorateVisibleEditors();
-  } catch (err) {
-    output.appendLine(`git failed: ${err instanceof Error ? err.message : String(err)}`);
-    output.show(true);
+  const found = await findRepo(folder.uri.fsPath);
+  if (!found.ok) {
+    output.appendLine(
+      found.reason === 'git-missing' ? 'git was not found on PATH; Change Spotlight is idle.' : `${folder.name} is not in a git repository; Change Spotlight is idle.`,
+    );
+    return;
+  }
+  repoRoot = found.repo.root;
+
+  const tracker = new ChangeTracker(found.repo);
+  context.subscriptions.push(
+    tracker,
+    tracker.onDidChange((result) => {
+      log(result, false);
+      ranges = result.ok ? changedRanges(result.files) : new Map();
+      decorateVisibleEditors();
+    }),
+    vscode.commands.registerCommand('changeSpotlight.refresh', async () => {
+      output.show(true);
+      log(await tracker.refresh(), true);
+    }),
+    startBridgeClient(found.repo.root, output),
+  );
+  tracker.schedule();
+}
+
+function log(result: ChangeResult, detailed: boolean): void {
+  if (!result.ok) {
+    output.appendLine(`Could not compute changes (${result.reason}): ${result.message}`);
+    return;
+  }
+  const tracked = result.files.length - result.untracked.length;
+  output.appendLine(`Base: ${describeBase(result.base)} | ${tracked} changed file(s), ${result.untracked.length} untracked`);
+  for (const s of result.skipped) output.appendLine(`  skipped ${s.path}: larger than 2 MiB`);
+  if (!detailed) return;
+  for (const file of result.files) {
+    const lines = file.hunks.reduce((n, h) => n + h.newCount, 0);
+    const what = file.binary ? 'binary' : `${lines} changed line(s)`;
+    output.appendLine(`  ${file.status.padEnd(8)} ${file.path}: ${what}`);
   }
 }
 
 function decorateVisibleEditors(): void {
-  if (!lastResult) return;
-  const { root, changes } = lastResult;
   for (const editor of vscode.window.visibleTextEditors) {
-    const rel = path.relative(root, editor.document.uri.fsPath).split(path.sep).join('/');
-    const lines = changes.files.get(rel) ?? [];
+    const rel = repoRoot && editor.document.uri.scheme === 'file' ? toRepoRelative(editor.document.uri.fsPath, repoRoot) : null;
+    const lineRanges = rel ? (ranges.get(rel) ?? []) : [];
     editor.setDecorations(
       dot,
-      lines.map((n) => new vscode.Range(n - 1, 0, n - 1, 0)),
+      lineRanges.map((r) => new vscode.Range(r.start - 1, 0, r.end - 1, 0)),
     );
   }
 }

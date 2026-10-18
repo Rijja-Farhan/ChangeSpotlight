@@ -14,20 +14,34 @@
   "contributes": {
     "commands": [
       {
-        "command": "changeSpotlight.spike.showChanges",
-        "title": "Show Changed Lines (spike)",
+        "command": "changeSpotlight.refresh",
+        "title": "Refresh Changes",
         "category": "Change Spotlight"
       }
-    ]
+    ],
+    "configuration": {
+      "title": "Change Spotlight",
+      "properties": {
+        "changeSpotlight.baseBranch": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Branch or ref to compare against (e.g. `main`, `origin/develop`). Empty = try `main`, `master`, `origin/main`, `origin/master` in that order."
+        }
+      }
+    }
   },
   "scripts": {
     "build": "esbuild src/extension.ts --bundle --platform=node --format=cjs --target=node20 --external:vscode --sourcemap --outfile=dist/extension.js",
     "watch": "esbuild src/extension.ts --bundle --platform=node --format=cjs --target=node20 --external:vscode --sourcemap --outfile=dist/extension.js --watch",
-    "typecheck": "tsc -p . --noEmit"
+    "typecheck": "tsc -p . --noEmit && tsc -p tsconfig.test.json",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "devDependencies": {
     "@change-spotlight/core": "workspace:*",
     "@types/vscode": "~1.100.0",
-    "esbuild": "0.28.2"
+    "esbuild": "0.28.2",
+    "vite": "^8.3.4",
+    "vitest": "^5.0.5"
   }
 }
