@@ -1,0 +1,20 @@
+{
+  "name": "change-spotlight",
+  "displayName": "Change Spotlight",
+  "version": "0.0.0",
+  "private": true,
+  "publisher": "change-spotlight",
+  "engines": {
+    "vscode": "^1.100.0"
+  },
+  "main": "./dist/extension.js",
+  "activationEvents": [],
+  "contributes": {},
+  "scripts": {
+    "build": "tsc -p .",
+    "typecheck": "tsc -p . --noEmit"
+  },
+  "devDependencies": {
+    "@types/vscode": "~1.100.0"
+  }
+}
