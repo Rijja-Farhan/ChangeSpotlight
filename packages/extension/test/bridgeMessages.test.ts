@@ -17,6 +17,14 @@ describe('describeMessage', () => {
     );
   });
 
+  it('describes open and mark requests and stays quiet for overlays', () => {
+    expect(describeMessage(line({ type: 'open', path: 'src/App.tsx', line: 4 }))).toBe('Browser asked to open src/App.tsx:4');
+    expect(describeMessage(line({ type: 'mark', hunkIds: ['a#1', 'b#1'] }))).toBe('Browser marked 2 change(s) as seen');
+    expect(
+      describeMessage(line({ type: 'overlay', branch: null, totals: { seen: 0, total: 0, untrackable: 0 }, items: [], pages: [], unplaced: [] })),
+    ).toBeNull();
+  });
+
   it('stays quiet for hello, garbage and malformed messages', () => {
     expect(describeMessage(line({ type: 'hello', token: 't' }))).toBeNull();
     expect(describeMessage(line({ type: 'welcome' }))).toBeNull();

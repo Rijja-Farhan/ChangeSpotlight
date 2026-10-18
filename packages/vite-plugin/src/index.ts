@@ -4,7 +4,8 @@ import { PROTOCOL_VERSION } from '@change-spotlight/core';
 import { createFilter, type FilterPattern, type Plugin } from 'vite';
 import { startBridge, type Bridge, type BridgeInfo } from './bridge.js';
 import { resolveId as resolveTarget } from './ids.js';
-import { createMessageHandler } from './messages.js';
+import { CLIENT_EVENTS, createMessageHandler } from './messages.js';
+import { createOverlayRelay, OVERLAY_REQUEST_EVENT } from './relay.js';
 import { tagHostElements } from './transform.js';
 
 export interface ChangeSpotlightOptions {
@@ -79,12 +80,14 @@ export default function changeSpotlight(options: ChangeSpotlightOptions = {}): P
 
     configureServer(server) {
       const log = (msg: string) => server.config.logger.info(`[change-spotlight] ${msg}`);
-      if (gitDir) bridge = startBridge({ root: repoRoot, gitDir, viteRoot, log, onMessage: (m) => log(`ignored ${m.type} message from VS Code`) });
+      const relay = createOverlayRelay(server.ws, log);
+      if (gitDir) bridge = startBridge({ root: repoRoot, gitDir, viteRoot, log, onMessage: (m) => relay.fromExtension(m) });
       server.httpServer?.once('close', () => void closeBridge());
 
-      for (const event of ['cs:click', 'cs:visibility'] as const) {
+      for (const event of Object.keys(CLIENT_EVENTS) as (keyof typeof CLIENT_EVENTS)[]) {
         server.ws.on(event, createMessageHandler(event, (message) => bridge?.send(message), log));
       }
+      server.ws.on(OVERLAY_REQUEST_EVENT, (_data, client) => relay.onRequest(client));
     },
 
     // Vite calls this on server.close(), also for middleware-mode servers that have no httpServer.

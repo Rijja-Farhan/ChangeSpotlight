@@ -18,7 +18,12 @@ export function describeMessage(line: string): string | null {
   switch (message.type) {
     case 'hello':
     case 'welcome':
+    case 'overlay':
       return null;
+    case 'open':
+      return `Browser asked to open ${message.path}:${message.line}`;
+    case 'mark':
+      return `Browser marked ${message.hunkIds.length} change(s) as seen`;
     case 'click': {
       // loc is "path:start-end"; report "path:start" like a normal file:line reference.
       const loc = parseLoc(message.loc);

@@ -2,6 +2,7 @@
 // vscode.Event for the seen model, and never shows popups.
 import * as path from 'node:path';
 import * as vscode from 'vscode';
+import type { ProtocolMessage } from '@change-spotlight/core';
 import { startBridgeClient, type BridgeEvent } from './bridgeClient';
 import { describeMessage } from './bridgeMessages';
 
@@ -11,6 +12,8 @@ export interface BridgeConnection extends vscode.Disposable {
   readonly onDidChangeConnection: vscode.Event<void>;
   /** Number of connected dev servers. */
   connected(): number;
+  /** Send to every connected dev server; returns how many it went to. */
+  send(message: ProtocolMessage): number;
 }
 
 export function connectBridge(gitDir: string, output: vscode.OutputChannel): BridgeConnection {
@@ -30,6 +33,7 @@ export function connectBridge(gitDir: string, output: vscode.OutputChannel): Bri
     onMessage: emitter.event,
     onDidChangeConnection: connection.event,
     connected: () => client.connected().length,
+    send: (message) => client.send(message),
     dispose() {
       unsubscribe();
       unsubscribeConnection();

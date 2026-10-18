@@ -1,7 +1,7 @@
 // Validates browser -> plugin messages before they reach the bridge.
 import { parseMessage, type ProtocolMessage } from '@change-spotlight/core';
 
-export const CLIENT_EVENTS = { 'cs:click': 'click', 'cs:visibility': 'visibility' } as const;
+export const CLIENT_EVENTS = { 'cs:click': 'click', 'cs:visibility': 'visibility', 'cs:open': 'open', 'cs:mark': 'mark' } as const;
 
 /**
  * Returns a handler for one HMR custom event. Valid messages of the expected type are forwarded;

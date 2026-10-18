@@ -25,3 +25,23 @@ describe('createMessageHandler', () => {
     ]);
   });
 });
+
+describe('open and mark events', () => {
+  it('forwards valid requests from the page and drops invalid ones', () => {
+    const forwarded: ProtocolMessage[] = [];
+    const logs: string[] = [];
+    const open = createMessageHandler('cs:open', (m) => forwarded.push(m), (l) => logs.push(l));
+    const mark = createMessageHandler('cs:mark', (m) => forwarded.push(m), (l) => logs.push(l));
+    const goodOpen = { protocolVersion: PROTOCOL_VERSION, type: 'open', path: 'src/App.tsx', line: 4 };
+    const goodMark = { protocolVersion: PROTOCOL_VERSION, type: 'mark', hunkIds: ['a#1'] };
+
+    open(goodOpen);
+    open({ ...goodOpen, line: -1 });
+    open(goodMark);
+    mark(goodMark);
+    mark({ ...goodMark, hunkIds: 'a#1' });
+
+    expect(forwarded).toEqual([goodOpen, goodMark]);
+    expect(logs).toEqual(['dropped cs:open message (invalid-fields)', 'dropped cs:open message (wrong-type)', 'dropped cs:mark message (invalid-fields)']);
+  });
+});

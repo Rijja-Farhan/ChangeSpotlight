@@ -83,3 +83,60 @@ describe('parseServerInfo', () => {
     expect(parseServerInfo(value)).toBeNull();
   });
 });
+
+describe('overlay, open and mark', () => {
+  const item = {
+    loc: 'src/App.tsx:4-9',
+    path: 'src/App.tsx',
+    line: 5,
+    endLine: 6,
+    status: 'partly',
+    seenHunks: 1,
+    hunkIds: ['a#1', 'b#1'],
+    preview: '<p>Hi</p>',
+    pages: ['/'],
+  };
+  const overlay = {
+    protocolVersion: v,
+    type: 'overlay',
+    branch: 'feature',
+    totals: { seen: 1, total: 2, untrackable: 0 },
+    items: [item],
+    pages: ['/'],
+    unplaced: [],
+  };
+
+  it.each([
+    overlay,
+    { ...overlay, branch: null, items: [], pages: [] },
+    { protocolVersion: v, type: 'open', path: 'src/App.tsx', line: 3 },
+    { protocolVersion: v, type: 'mark', hunkIds: ['a#1'] },
+    { protocolVersion: v, type: 'mark', hunkIds: [] },
+  ])('accepts $type', (message) => {
+    expect(parseMessage(message)).toEqual({ ok: true, message });
+  });
+
+  it.each([
+    { ...overlay, branch: 3 },
+    { ...overlay, totals: { seen: 1, total: 2 } },
+    { ...overlay, totals: { seen: -1, total: 2, untrackable: 0 } },
+    { ...overlay, items: {} },
+    { ...overlay, items: [{ ...item, status: 'maybe' }] },
+    { ...overlay, items: [{ ...item, line: 0 }] },
+    { ...overlay, items: [{ ...item, endLine: 4 }] },
+    { ...overlay, items: [{ ...item, line: 1.5 }] },
+    { ...overlay, items: [{ ...item, hunkIds: [1] }] },
+    { ...overlay, items: [{ ...item, pages: undefined }] },
+    { ...overlay, items: [null] },
+    { ...overlay, unplaced: [7] },
+    { ...overlay, pages: undefined },
+    { protocolVersion: v, type: 'open', path: '', line: 3 },
+    { protocolVersion: v, type: 'open', path: 'a.tsx', line: 0 },
+    { protocolVersion: v, type: 'open', path: 'a.tsx', line: '3' },
+    { protocolVersion: v, type: 'open', line: 3 },
+    { protocolVersion: v, type: 'mark' },
+    { protocolVersion: v, type: 'mark', hunkIds: [null] },
+  ])('rejects malformed %#', (value) => {
+    expect(parseMessage(value)).toEqual({ ok: false, reason: 'invalid-fields' });
+  });
+});

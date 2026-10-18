@@ -68,7 +68,14 @@ export class SeenController {
 
   /** "Mark as Seen" / "Mark as Unseen" from the tree. */
   async markHunk(id: string, seen: boolean): Promise<void> {
-    if (this.model?.setSeen(id, seen)) await this.persist();
+    await this.markHunks([id], seen);
+  }
+
+  /** Several at once (the browser's "Mark as seen"), saved once. Unknown ids are ignored. */
+  async markHunks(ids: readonly string[], seen: boolean): Promise<void> {
+    let changed = false;
+    for (const id of ids) if (this.model?.setSeen(id, seen)) changed = true;
+    if (changed) await this.persist();
   }
 
   async reset(): Promise<void> {

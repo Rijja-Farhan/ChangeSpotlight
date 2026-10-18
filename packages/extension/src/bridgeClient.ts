@@ -34,6 +34,8 @@ export interface BridgeClient {
   onConnectionChange(listener: (event: ConnectionEvent) => void): () => void;
   /** Currently connected server ids. */
   connected(): string[];
+  /** Send to every connected server; returns how many it went to. */
+  send(message: ProtocolMessage): number;
   dispose(): void;
 }
 
@@ -229,6 +231,16 @@ export function startBridgeClient(options: BridgeClientOptions): BridgeClient {
       return () => connectionListeners.delete(listener);
     },
     connected: () => [...entries.values()].filter((e) => e.welcomed).map((e) => e.id),
+    send(message) {
+      const text = JSON.stringify(message);
+      let sent = 0;
+      for (const entry of entries.values()) {
+        if (!entry.welcomed || entry.ws?.readyState !== WebSocket.OPEN) continue;
+        entry.ws.send(text);
+        sent++;
+      }
+      return sent;
+    },
     dispose() {
       disposed = true;
       clearTimeout(rescanTimer);

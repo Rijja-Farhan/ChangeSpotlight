@@ -6,6 +6,7 @@ import { connectBridge, type BridgeConnection } from './bridge';
 import { ChangeTracker } from './changeTracker';
 import { describeBase, findRepo, type ChangeResult } from './git';
 import { Gutter } from './gutter';
+import { openTarget, OverlayPublisher } from './overlayPublisher';
 import { SeenController, type SeenState } from './seenController';
 import { SeenStore } from './seenStore';
 import type { TreeNode } from './tree';
@@ -53,6 +54,7 @@ async function start(context: vscode.ExtensionContext, tree: ChangesTreeProvider
   status.command = 'changeSpotlight.changes.focus';
   const bridge = connectBridge(found.repo.gitDir, output);
   const tracker = new ChangeTracker(found.repo);
+  const overlay = new OverlayPublisher((message) => bridge.send(message));
 
   const render = (state: SeenState) => {
     tree.update(state);
@@ -65,6 +67,7 @@ async function start(context: vscode.ExtensionContext, tree: ChangesTreeProvider
     status.show();
     setStatus(state.hunks.length === 0 ? 'noChanges' : 'ready');
     updateMessage(view, bridge, state);
+    overlay.update(state);
   };
   const seen = new SeenController(new SeenStore(context.workspaceState), (msg) => output.appendLine(msg), render);
 
@@ -73,8 +76,12 @@ async function start(context: vscode.ExtensionContext, tree: ChangesTreeProvider
     status,
     tracker,
     bridge,
+    overlay,
     vscode.window.onDidChangeVisibleTextEditors(() => gutter.apply()),
-    bridge.onDidChangeConnection(() => updateMessage(view, bridge, seen.state)),
+    bridge.onDidChangeConnection(() => {
+      updateMessage(view, bridge, seen.state);
+      overlay.flush(); // a newly connected dev server gets the overlay right away
+    }),
     tracker.onDidChange((result) => {
       log(result, false);
       if (!result.ok) setStatus('error');
@@ -85,6 +92,8 @@ async function start(context: vscode.ExtensionContext, tree: ChangesTreeProvider
       if (message.type === 'click' && vscode.workspace.getConfiguration('changeSpotlight').get<boolean>('openOnClick', false)) {
         void openClicked(root, message.loc);
       }
+      if (message.type === 'open') void openRequested(root, message.path, message.line);
+      if (message.type === 'mark') void seen.markHunks(message.hunkIds, true);
     }),
     vscode.commands.registerCommand('changeSpotlight.refresh', async () => {
       output.show(true);
@@ -136,6 +145,19 @@ async function openClicked(root: string, value: string): Promise<void> {
   if (!fs.existsSync(file)) return;
   const position = new vscode.Position(loc.start - 1, 0);
   await vscode.window.showTextDocument(vscode.Uri.file(file), { preview: true, preserveFocus: true, selection: new vscode.Range(position, position) });
+}
+
+/** "Open in VS Code" from the browser overlay. The path comes from the page, so check it first. */
+async function openRequested(root: string, requested: string, line: number): Promise<void> {
+  const rel = openTarget(requested);
+  const file = rel && path.join(root, rel);
+  if (!file || !fs.existsSync(file) || !fs.statSync(file).isFile()) {
+    output.appendLine(`Ignored a request to open ${requested}: not a file in this repository.`);
+    return;
+  }
+  const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(file));
+  const position = new vscode.Position(Math.min(line, doc.lineCount) - 1, 0);
+  await vscode.window.showTextDocument(doc, { preview: true, selection: new vscode.Range(position, position) });
 }
 
 function log(result: ChangeResult, detailed: boolean): void {

@@ -1,6 +1,7 @@
 // Builds the "Changes" tree from the seen state. Plain data, no vscode import, so it is unit-tested;
 // treeView.ts turns these nodes into TreeItems.
 import type { HunkStatus } from '@change-spotlight/core';
+import { endLineOf, lineOf, preview } from './hunkText';
 import type { SeenState } from './seenController';
 
 export interface TreeNode {
@@ -28,19 +29,6 @@ const REASONS: Record<string, string> = {
   'parse-error': 'could not be parsed',
   'no-element': 'not inside a rendered element',
 };
-
-const PREVIEW_MAX = 60;
-
-function preview(h: HunkStatus): string {
-  const pick = (lines: string[]) => lines.map((l) => l.trim().replace(/\s+/g, ' ')).find((l) => l !== '') ?? '';
-  const cut = (text: string) => (text.length > PREVIEW_MAX ? text.slice(0, PREVIEW_MAX) + '…' : text);
-  if (h.hunk.newCount === 0) return `deleted: ${cut(pick(h.hunk.removed))}`;
-  return cut(pick(h.hunk.added));
-}
-
-function lineOf(h: HunkStatus): number {
-  return Math.max(h.hunk.newStart, 1);
-}
 
 function basename(path: string): string {
   return path.slice(path.lastIndexOf('/') + 1);
@@ -76,7 +64,7 @@ function hunkNode(group: string, h: HunkStatus): TreeNode {
           open: {
             path: h.path,
             startLine: lineOf(h),
-            endLine: Math.max(lineOf(h), h.hunk.newStart + h.hunk.newCount - 1),
+            endLine: endLineOf(h),
             ...(h.hunk.newCount === 0 ? { deletion: true as const } : {}),
           },
         }),
