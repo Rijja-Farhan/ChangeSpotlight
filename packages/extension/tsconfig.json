@@ -1,5 +1,6 @@
 {
   "extends": "../../tsconfig.base.json",
-  "compilerOptions": { "module": "Node16", "moduleResolution": "Node16", "rootDir": "src", "outDir": "dist" },
+  // esbuild produces the real output (CommonJS); tsc only typechecks, so use bundler-style resolution.
+  "compilerOptions": { "module": "Preserve", "moduleResolution": "Bundler", "noEmit": true },
   "include": ["src"]
 }

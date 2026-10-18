@@ -7,6 +7,18 @@
   "types": "./dist/index.d.ts",
   "scripts": {
     "build": "tsc -p .",
+    "dev": "tsc -p . --watch",
     "typecheck": "tsc -p . --noEmit"
+  },
+  "dependencies": {
+    "@change-spotlight/core": "workspace:*",
+    "magic-string": "^1.4.3",
+    "oxc-parser": "^0.154.0"
+  },
+  "devDependencies": {
+    "vite": "^8.3.4"
+  },
+  "peerDependencies": {
+    "vite": ">=8"
   }
 }

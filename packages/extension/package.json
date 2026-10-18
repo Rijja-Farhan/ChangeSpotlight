@@ -8,13 +8,26 @@
     "vscode": "^1.100.0"
   },
   "main": "./dist/extension.js",
-  "activationEvents": [],
-  "contributes": {},
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "command": "changeSpotlight.spike.showChanges",
+        "title": "Show Changed Lines (spike)",
+        "category": "Change Spotlight"
+      }
+    ]
+  },
   "scripts": {
-    "build": "tsc -p .",
+    "build": "esbuild src/extension.ts --bundle --platform=node --format=cjs --target=node20 --external:vscode --sourcemap --outfile=dist/extension.js",
+    "watch": "esbuild src/extension.ts --bundle --platform=node --format=cjs --target=node20 --external:vscode --sourcemap --outfile=dist/extension.js --watch",
     "typecheck": "tsc -p . --noEmit"
   },
   "devDependencies": {
-    "@types/vscode": "~1.100.0"
+    "@change-spotlight/core": "workspace:*",
+    "@types/vscode": "~1.100.0",
+    "esbuild": "0.28.2"
   }
 }
