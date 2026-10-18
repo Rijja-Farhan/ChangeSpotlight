@@ -6,15 +6,19 @@ import { startSensor } from './sensor.js';
 
 export interface HotChannel {
   send(event: string, data: unknown): void;
+  on?(event: string, callback: () => void): void;
 }
 
 export function startClient({ protocolVersion, hot }: { protocolVersion: number; hot: HotChannel | undefined }): void {
   if (!hot) return; // no HMR channel: nowhere to report to
 
-  startSensor((batch) => {
+  const sensor = startSensor((batch) => {
     const message: VisibilityMessage = { protocolVersion, type: 'visibility', page: batch.page, seen: batch.seen };
     hot.send('cs:visibility', message);
   });
+  // After a hot update the changed code may sit in an element whose range did not change; report
+  // everything visible again so the extension can match it to the new change.
+  hot.on?.('vite:afterUpdate', () => sensor.resetReported());
 
   document.addEventListener(
     'click',

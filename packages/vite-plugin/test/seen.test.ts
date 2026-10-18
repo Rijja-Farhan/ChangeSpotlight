@@ -160,4 +160,21 @@ describe('SeenTracker', () => {
     t.flush(); // pagehide / tab hidden
     expect(batches.at(-1)).toEqual({ page: '/', seen: ['c:1-1'] });
   });
+
+  it('reports still-visible elements again after resetReported (HMR)', () => {
+    const t = make();
+    t.update('a', visible('a:1-1'));
+    t.update('b', visible('b:1-1', { ratio: 0 }));
+    settle();
+    t.resetReported();
+    vi.advanceTimersByTime(299);
+    t.flush();
+    expect(batches).toEqual([{ page: '/', seen: ['a:1-1'] }]);
+    vi.advanceTimersByTime(1);
+    t.flush();
+    expect(batches).toEqual([
+      { page: '/', seen: ['a:1-1'] },
+      { page: '/', seen: ['a:1-1'] },
+    ]);
+  });
 });

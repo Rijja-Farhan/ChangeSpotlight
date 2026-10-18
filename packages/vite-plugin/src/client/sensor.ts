@@ -7,6 +7,8 @@ const ATTR = 'data-cs-loc';
 const THRESHOLDS = Array.from({ length: 21 }, (_, i) => i / 20);
 
 export interface Sensor {
+  /** Report elements still on screen again (after HMR). */
+  resetReported(): void;
   stop(): void;
 }
 
@@ -98,6 +100,7 @@ export function startSensor(onBatch: (batch: Batch) => void): Sensor {
   updateActive();
 
   return {
+    resetReported: () => tracker.resetReported(),
     stop() {
       tracker.flush();
       io.disconnect();

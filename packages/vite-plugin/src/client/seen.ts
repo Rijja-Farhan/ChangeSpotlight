@@ -86,6 +86,16 @@ export class SeenTracker<K> {
     for (const key of this.observations.keys()) this.evaluate(key);
   }
 
+  /**
+   * Forget what was already reported, so elements still on screen are reported again after a
+   * dwell. Called after HMR: an edit inside an element whose line range did not change gives a
+   * new change that must be seen again, but the element's loc (and thus the dedupe key) is the same.
+   */
+  resetReported(): void {
+    this.reported.clear();
+    for (const key of this.observations.keys()) this.evaluate(key);
+  }
+
   /** Send everything queued now (also called on pagehide / tab hidden). */
   flush(): void {
     this.options.timers.clearTimeout(this.flushTimer);
