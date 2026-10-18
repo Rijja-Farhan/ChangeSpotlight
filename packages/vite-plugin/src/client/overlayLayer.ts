@@ -6,6 +6,8 @@
 import type { OverlayItem, OverlayMessage } from '@change-spotlight/core';
 import { inViewport, LABEL_HEIGHT, labelText, placeLabels, type LabelRequest, type Rect } from './outlines.js';
 import { onOverlay } from './overlayData.js';
+import { edgeCounts, nearest, panelSections, type Direction } from './finder.js';
+import { createFinderUi, FINDER_STYLE, HIDE_SEEN_KEY } from './finderUi.js';
 import { COUNTING_TEXT, flashLocs, isCounting, ringOffset } from './live.js';
 import { DWELL_MS } from './seen.js';
 
@@ -21,6 +23,7 @@ const RING_LENGTH = 28.3; // circumference of the r=4.5 ring
 
 const STYLE = `
 :host { all: initial; }
+${FINDER_STYLE}
 .layer { position: fixed; inset: 0; overflow: hidden; pointer-events: none; }
 .outline { position: absolute; box-sizing: border-box; border-radius: 2px; outline-offset: 3px; pointer-events: none; }
 .outline[data-status="unseen"], .outline[data-status="partly"] { outline: 2px dashed #b45309; box-shadow: 0 0 0 9px rgba(180, 83, 9, 0.12); }
@@ -42,7 +45,7 @@ const STYLE = `
   .outline[data-flash], .label[data-flash] { animation: none; }
   .ring-fill { animation: none; stroke-dashoffset: ${RING_LENGTH / 2}; }
 }
-.eye { position: fixed; right: 20px; bottom: 20px; width: 40px; height: 40px; border: 0; border-radius: 20px; padding: 0; margin: 0;
+.eye { width: 40px; height: 40px; border: 0; border-radius: 20px; padding: 0; margin: 0;
   display: flex; align-items: center; justify-content: center; background: #1d1c1a; color: #f6f5f2; cursor: pointer;
   box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25); pointer-events: auto; }
 .eye:hover { background: #34322e; }
@@ -77,17 +80,19 @@ export interface OverlayLayer {
   stop(): void;
 }
 
-function readVisible(): boolean {
+/** Per-tab on/off flags in sessionStorage; `fallback` when unset or storage is blocked. */
+function readFlag(key: string, fallback: boolean): boolean {
   try {
-    return sessionStorage.getItem(STORAGE_KEY) !== 'off';
+    const value = sessionStorage.getItem(key);
+    return value === null ? fallback : value === 'on';
   } catch {
-    return true;
+    return fallback;
   }
 }
 
-function writeVisible(visible: boolean): void {
+function writeFlag(key: string, on: boolean): void {
   try {
-    sessionStorage.setItem(STORAGE_KEY, visible ? 'on' : 'off');
+    sessionStorage.setItem(key, on ? 'on' : 'off');
   } catch {
     // storage blocked: the toggle still works for this page load
   }
@@ -106,7 +111,13 @@ export function startOverlayLayer(): OverlayLayer {
   const layer = root.querySelector('.layer') as HTMLDivElement;
   const eye = root.querySelector('.eye') as HTMLButtonElement;
 
+  let overlay: OverlayMessage | undefined;
   let items: OverlayItem[] = [];
+  let hideSeen = readFlag(HIDE_SEEN_KEY, false);
+  /** From the last draw, for arrow clicks: loc -> boxes, and loc -> elements (document order). */
+  let lastPresent = new Map<string, Rect[]>();
+  let lastElements = new Map<string, Element[]>();
+  let lastViewport = { width: 0, height: 0 };
   /** Elements the sensor is counting right now -> when it started (performance.now()). */
   const dwelling = new Map<Element, number>();
   /** Last status VS Code sent per loc, to spot the switch to "seen". */
@@ -114,7 +125,7 @@ export function startOverlayLayer(): OverlayLayer {
   /** loc -> when its flash ends. */
   const flashing = new Map<string, number>();
   const reducedMotion = typeof matchMedia === 'function' ? matchMedia('(prefers-reduced-motion: reduce)') : undefined;
-  let visible = readVisible();
+  let visible = readFlag(STORAGE_KEY, true);
   let frame = 0;
   /** Drawn nodes by key ("loc\n<instance>"), reused across frames. */
   const outlines = new Map<string, HTMLDivElement>();
@@ -149,10 +160,28 @@ export function startOverlayLayer(): OverlayLayer {
 
   const setVisible = (next: boolean) => {
     visible = next;
-    writeVisible(next);
+    writeFlag(STORAGE_KEY, next);
     renderEye();
     schedule();
   };
+
+  const scrollTo = (loc: string) => {
+    const el = lastElements.get(loc)?.find((e) => e.isConnected) ?? document.querySelector(`[${ATTR}="${CSS.escape(loc)}"]`);
+    el?.scrollIntoView({ block: 'center', inline: 'center', behavior: reducedMotion?.matches ? 'auto' : 'smooth' });
+  };
+  const finder = createFinderUi(root, eye, {
+    scrollTo,
+    scrollToward(direction: Direction) {
+      const loc = nearest(direction, items, lastPresent, lastViewport);
+      if (loc) scrollTo(loc);
+    },
+    setVisible,
+    setHideSeen(next) {
+      hideSeen = next;
+      writeFlag(HIDE_SEEN_KEY, next);
+      schedule();
+    },
+  });
 
   const prune = <T extends Element>(nodes: Map<string, T>, keep: Set<string>) => {
     for (const [key, node] of nodes) {
@@ -174,7 +203,10 @@ export function startOverlayLayer(): OverlayLayer {
     /** Locs with at least one instance being counted (its label shows the ring). */
     const countingLocs = new Map<string, number>();
     const elements = new Set<Element>();
-    if (visible && byLoc.size > 0) {
+    /** Every changed element in the DOM, drawn or not, for the arrows and the panel. */
+    const present = new Map<string, Rect[]>();
+    const presentElements = new Map<string, Element[]>();
+    if (byLoc.size > 0) {
       const instances = new Map<string, number>();
       for (const el of document.querySelectorAll(`[${ATTR}]`)) {
         const item = byLoc.get(el.getAttribute(ATTR) ?? '');
@@ -185,7 +217,9 @@ export function startOverlayLayer(): OverlayLayer {
         const n = instances.get(item.loc) ?? 0;
         instances.set(item.loc, n + 1);
         const rect = { left: r.left, top: r.top, width: r.width, height: r.height };
-        if (!inViewport(rect, viewport, OFFSCREEN_MARGIN)) continue;
+        present.set(item.loc, [...(present.get(item.loc) ?? []), rect]);
+        presentElements.set(item.loc, [...(presentElements.get(item.loc) ?? []), el]);
+        if (!visible || (hideSeen && item.status === 'seen') || !inViewport(rect, viewport, OFFSCREEN_MARGIN)) continue;
         // The browser never claims "seen": the ring shows only on what VS Code has not confirmed.
         const dwell = dwelling.get(el);
         const started = isCounting(item.status, dwell) ? dwell : undefined;
@@ -261,6 +295,17 @@ export function startOverlayLayer(): OverlayLayer {
     }
     prune(outlines, keepOutlines);
     prune(labels, keepLabels);
+
+    lastPresent = present;
+    lastElements = presentElements;
+    lastViewport = viewport;
+    finder.update({
+      overlay,
+      counts: edgeCounts(items, present, viewport),
+      sections: panelSections({ items }, present, location.pathname, viewport),
+      visible,
+      hideSeen,
+    });
   }
 
   // Changes in the app's DOM may move or resize changed elements. Our own nodes live in the shadow
@@ -281,8 +326,9 @@ export function startOverlayLayer(): OverlayLayer {
   window.addEventListener('scroll', schedule, { capture: true, passive: true });
   window.addEventListener('resize', schedule, { passive: true });
   window.addEventListener('keydown', onKey, true);
-  const unsubscribe = onOverlay((overlay: OverlayMessage) => {
-    items = overlay.items;
+  const unsubscribe = onOverlay((message: OverlayMessage) => {
+    overlay = message;
+    items = message.items;
     // Flash what VS Code just confirmed as seen; never on the first overlay after page load.
     const previous = lastStatus;
     lastStatus = new Map(items.map((i) => [i.loc, i.status]));
