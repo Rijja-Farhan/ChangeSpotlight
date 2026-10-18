@@ -5,5 +5,4 @@ out/
 *.tsbuildinfo
 .vscode-test/
 .claude/
-.change-spotlight/
 Notes/

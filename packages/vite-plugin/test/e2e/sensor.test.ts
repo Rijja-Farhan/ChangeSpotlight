@@ -1,62 +1,40 @@
 // End to end: headless Chrome -> sensor -> import.meta.hot -> plugin validation -> bridge /events.
-import { existsSync, readFileSync } from 'node:fs';
-import * as http from 'node:http';
+import { existsSync } from 'node:fs';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import reactSwc from '@vitejs/plugin-react-swc';
 import { chromium, type Browser, type Page } from 'playwright-core';
-import { createServer, type PluginOption, type ViteDevServer } from 'vite';
+import { createServer, type PluginOption } from 'vite';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import changeSpotlight from '../../src/index.js';
+import { connectClient } from '../helpers/bridgeClient.js';
 
 const chrome = process.env.CS_CHROME ?? '/usr/bin/google-chrome';
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, '../../../..');
-const discoveryFile = path.join(repoRoot, '.change-spotlight', 'dev-server.json');
 
 interface Visibility {
   page: string;
   seen: string[];
 }
 
-/** A dev server plus a reader on its bridge stream, collecting visibility messages. */
-async function startStack(root: string, plugins: PluginOption[]) {
-  const server = await createServer({ root, configFile: false, plugins, logLevel: 'silent', server: { port: 0, strictPort: false } });
+/** A dev server plus a bridge client collecting its visibility messages. */
+async function startStack(root: string, extraPlugins: PluginOption[] = []) {
+  const cs = changeSpotlight();
+  const server = await createServer({ root, configFile: false, plugins: [cs, ...extraPlugins], logLevel: 'silent', server: { port: 0, strictPort: false } });
   await server.listen();
   const url = server.resolvedUrls!.local[0]!;
-
-  // The bridge writes its port shortly after listening.
-  let port: number | undefined;
-  for (let i = 0; i < 100 && port === undefined; i++) {
-    if (existsSync(discoveryFile)) {
-      const info = JSON.parse(readFileSync(discoveryFile, 'utf8')) as { pid: number; port: number };
-      if (info.pid === process.pid) port = info.port;
-    }
-    if (port === undefined) await new Promise((r) => setTimeout(r, 50));
-  }
-  if (port === undefined) throw new Error('bridge did not start');
-
-  const messages: Visibility[] = [];
-  const request = http.get({ host: '127.0.0.1', port, path: '/events' }, (res) => {
-    let buffer = '';
-    res.setEncoding('utf8');
-    res.on('data', (chunk: string) => {
-      buffer += chunk;
-      let nl: number;
-      while ((nl = buffer.indexOf('\n')) >= 0) {
-        const msg = JSON.parse(buffer.slice(0, nl)) as { type: string } & Visibility;
-        buffer = buffer.slice(nl + 1);
-        if (msg.type === 'visibility') messages.push({ page: msg.page, seen: msg.seen });
-      }
-    });
-  });
-  request.on('error', () => {});
+  const info = await cs.api!.bridgeInfo();
+  if (!info) throw new Error('bridge did not start');
+  const client = await connectClient(info.port, info.token);
+  const messages = client.messages as unknown as ({ type: string } & Visibility)[];
+  const visibility = () => messages.filter((m) => m.type === 'visibility');
   return {
     url,
     messages,
-    seen: (page = '/') => new Set(messages.filter((m) => m.page === page).flatMap((m) => m.seen)),
+    seen: (page = '/') => new Set(visibility().filter((m) => m.page === page).flatMap((m) => m.seen)),
     async close(this: void) {
-      request.destroy();
+      client.close();
       await server.close();
     },
   };
@@ -80,7 +58,7 @@ describe.skipIf(!existsSync(chrome))('sensor in headless Chrome', () => {
 
   beforeAll(async () => {
     browser = await chromium.launch({ executablePath: chrome, headless: true });
-    stack = await startStack(path.join(here, 'fixture'), [changeSpotlight()]);
+    stack = await startStack(path.join(here, 'fixture'));
   });
   afterAll(async () => {
     await browser?.close();
@@ -165,7 +143,7 @@ describe.skipIf(!existsSync(chrome))('sensor in headless Chrome', () => {
 describe.skipIf(!existsSync(chrome))('playground in headless Chrome', () => {
   it('reports the footer only after scrolling to the bottom', async () => {
     const browser = await chromium.launch({ executablePath: chrome, headless: true });
-    const stack = await startStack(path.join(repoRoot, 'playground'), [changeSpotlight(), reactSwc()]);
+    const stack = await startStack(path.join(repoRoot, 'playground'), [reactSwc()]);
     try {
       const page = await browser.newPage({ viewport: { width: 800, height: 600 } });
       await page.goto(stack.url);

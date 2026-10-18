@@ -2,7 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { PROTOCOL_VERSION } from '@change-spotlight/core';
 import { createFilter, type FilterPattern, type Plugin } from 'vite';
-import { startBridge, type Bridge } from './bridge.js';
+import { startBridge, type Bridge, type BridgeInfo } from './bridge.js';
 import { resolveId as resolveTarget } from './ids.js';
 import { createMessageHandler } from './messages.js';
 import { tagHostElements } from './transform.js';
@@ -26,23 +26,38 @@ const clientEntry = `import { startClient } from ${JSON.stringify('/@fs/' + clie
 startClient({ protocolVersion: ${JSON.stringify(PROTOCOL_VERSION)}, hot: import.meta.hot });
 `;
 
-function findRepoRoot(dir: string): string | null {
+/** One git call for the work tree root and the per-worktree git dir (.git may be a file in worktrees). */
+function findRepo(dir: string): { root: string; gitDir: string } | null {
   try {
-    return execFileSync('git', ['rev-parse', '--show-toplevel'], { cwd: dir, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+    const out = execFileSync('git', ['rev-parse', '--path-format=absolute', '--show-toplevel', '--git-dir'], {
+      cwd: dir,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+    });
+    const [root, gitDir] = out.split('\n');
+    return root && gitDir ? { root, gitDir } : null;
   } catch {
     return null;
   }
 }
 
-export default function changeSpotlight(options: ChangeSpotlightOptions = {}): Plugin {
-  if (options.enabled === false) return { name: 'change-spotlight', apply: () => false };
+/** What the plugin exposes to other plugins and tests via `plugin.api`. */
+export interface ChangeSpotlightApi {
+  bridgeInfo(): Promise<BridgeInfo | null>;
+}
+
+export default function changeSpotlight(options: ChangeSpotlightOptions = {}): Plugin<ChangeSpotlightApi> {
+  if (options.enabled === false) return { name: 'change-spotlight', apply: () => false, api: { bridgeInfo: async () => null } };
 
   const filter = createFilter(options.include ?? /\.[jt]sx$/, options.exclude ?? /\/node_modules\//);
   let repoRoot = process.cwd();
+  let gitDir: string | undefined;
+  let viteRoot = process.cwd();
   let bridge: Bridge | undefined;
-  const closeBridge = () => {
-    bridge?.close();
+  const closeBridge = async () => {
+    const closing = bridge;
     bridge = undefined;
+    await closing?.close();
   };
 
   return {
@@ -50,16 +65,22 @@ export default function changeSpotlight(options: ChangeSpotlightOptions = {}): P
     apply: 'serve',
     enforce: 'pre',
 
+    api: {
+      bridgeInfo: async () => (bridge ? bridge.info() : null),
+    },
+
     configResolved(config) {
-      const root = findRepoRoot(config.root);
-      if (!root) config.logger.info('[change-spotlight] not in a git repository; paths are relative to the Vite root');
-      repoRoot = root ?? config.root;
+      const repo = findRepo(config.root);
+      if (!repo) config.logger.info('[change-spotlight] not in a git repository: paths are relative to the Vite root and VS Code is not notified');
+      repoRoot = repo?.root ?? config.root;
+      gitDir = repo?.gitDir;
+      viteRoot = config.root;
     },
 
     configureServer(server) {
       const log = (msg: string) => server.config.logger.info(`[change-spotlight] ${msg}`);
-      bridge = startBridge(repoRoot, log);
-      server.httpServer?.once('close', closeBridge);
+      if (gitDir) bridge = startBridge({ root: repoRoot, gitDir, viteRoot, log, onMessage: (m) => log(`ignored ${m.type} message from VS Code`) });
+      server.httpServer?.once('close', () => void closeBridge());
 
       for (const event of ['cs:click', 'cs:visibility'] as const) {
         server.ws.on(event, createMessageHandler(event, (message) => bridge?.send(message), log));

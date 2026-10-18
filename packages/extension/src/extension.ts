@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { changedRanges, toRepoRelative, type LineRange } from '@change-spotlight/core';
-import { startBridgeClient } from './bridge';
+import { connectBridge } from './bridge';
 import { ChangeTracker } from './changeTracker';
 import { describeBase, findRepo, type ChangeResult } from './git';
 
@@ -50,7 +50,7 @@ async function start(context: vscode.ExtensionContext): Promise<void> {
       output.show(true);
       log(await tracker.refresh(), true);
     }),
-    startBridgeClient(found.repo.root, output),
+    connectBridge(found.repo.gitDir, output),
   );
   tracker.schedule();
 }

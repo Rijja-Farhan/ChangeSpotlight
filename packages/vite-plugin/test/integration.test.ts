@@ -12,7 +12,8 @@ import changeSpotlight from '../src/index.js';
 
 const repoRoot = path.resolve(fileURLToPath(import.meta.url), '../../../..');
 const playground = path.join(repoRoot, 'playground');
-const discoveryFile = path.join(repoRoot, '.change-spotlight', 'dev-server.json');
+const serversDir = path.join(repoRoot, '.git', 'change-spotlight', 'servers');
+const entries = () => (existsSync(serversDir) ? readdirSync(serversDir) : []);
 
 async function transform(plugins: PluginOption[], url: string) {
   const server = await createServer({ root: playground, configFile: false, plugins, server: { middlewareMode: true, ws: false }, logLevel: 'silent' });
@@ -38,7 +39,7 @@ describe.each([
   ['@vitejs/plugin-react-swc', () => reactSwc()],
 ])('with %s', (_name, makeReact) => {
   it('tags host elements, keeps React Refresh, and keeps source maps as accurate as without us', async () => {
-    const hadDiscoveryFile = existsSync(discoveryFile);
+    const before = entries();
     const tagged = await transform([changeSpotlight(), makeReact()], '/src/components/Counter.tsx');
     const plain = await transform([makeReact()], '/src/components/Counter.tsx');
 
@@ -48,7 +49,7 @@ describe.each([
     for (const token of ['setCount((c)', 'useState(0)', 'onClick']) {
       expect(originalOf(tagged.code, tagged.map, token)).toEqual(originalOf(plain.code, plain.map, token));
     }
-    if (!hadDiscoveryFile) expect(existsSync(discoveryFile)).toBe(false);
+    expect(entries()).toEqual(before); // servers removed their discovery files on close
   });
 
   it('does not tag components', async () => {

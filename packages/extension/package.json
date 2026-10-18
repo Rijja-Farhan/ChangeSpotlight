@@ -39,9 +39,12 @@
   },
   "devDependencies": {
     "@change-spotlight/core": "workspace:*",
+    "@change-spotlight/vite-plugin": "workspace:*",
     "@types/vscode": "~1.100.0",
+    "@types/ws": "^8.18.2",
     "esbuild": "0.28.2",
     "vite": "^8.3.4",
-    "vitest": "^5.0.5"
+    "vitest": "^5.0.5",
+    "ws": "^8.22.0"
   }
 }

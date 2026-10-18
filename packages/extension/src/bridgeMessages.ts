@@ -17,6 +17,7 @@ export function describeMessage(line: string): string | null {
   const message = result.message;
   switch (message.type) {
     case 'hello':
+    case 'welcome':
       return null;
     case 'click': {
       // loc is "path:start-end"; report "path:start" like a normal file:line reference.

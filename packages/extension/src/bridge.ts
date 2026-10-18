@@ -1,74 +1,31 @@
-// SPIKE: extension side of the plugin -> extension connection. Real version comes in Phase 6.
-import * as fs from 'node:fs';
-import * as http from 'node:http';
+// VS Code wrapper around the bridge client: logs to the Output channel, re-exposes messages as a
+// vscode.Event for the seen model, and never shows popups.
+import * as path from 'node:path';
 import * as vscode from 'vscode';
+import { startBridgeClient, type BridgeEvent } from './bridgeClient';
 import { describeMessage } from './bridgeMessages';
 
-const DISCOVERY_FILE = '.change-spotlight/dev-server.json';
-
-/**
- * Watches the discovery file the Vite plugin writes, connects to its /events feed,
- * and logs every message. All failures are logged quietly; no popups.
- */
-export function startBridgeClient(repoRoot: string, output: vscode.OutputChannel): vscode.Disposable {
-  let current: http.ClientRequest | undefined;
-
-  const disconnect = () => {
-    current?.destroy();
-    current = undefined;
-  };
-
-  const connect = () => {
-    disconnect();
-    let port: number;
-    try {
-      const info = JSON.parse(fs.readFileSync(`${repoRoot}/${DISCOVERY_FILE}`, 'utf8')) as { port?: unknown };
-      if (typeof info.port !== 'number') return;
-      port = info.port;
-    } catch {
-      return; // no dev server running (or file half-written; the next change event retries)
-    }
-
-    const req = http.get({ host: '127.0.0.1', port, path: '/events' }, (res) => {
-      output.appendLine(`Connected to Vite plugin on port ${port}.`);
-      let buffer = '';
-      res.setEncoding('utf8');
-      res.on('data', (chunk: string) => {
-        buffer += chunk;
-        let newline: number;
-        while ((newline = buffer.indexOf('\n')) >= 0) {
-          handleLine(buffer.slice(0, newline), output);
-          buffer = buffer.slice(newline + 1);
-        }
-      });
-      res.on('end', () => {
-        if (current === req) output.appendLine('Vite plugin disconnected.');
-      });
-    });
-    req.on('error', (err) => {
-      if (current === req) output.appendLine(`Could not reach Vite plugin on port ${port}: ${err.message}`);
-    });
-    current = req;
-  };
-
-  const watcher = vscode.workspace.createFileSystemWatcher(
-    new vscode.RelativePattern(vscode.Uri.file(repoRoot), DISCOVERY_FILE),
-  );
-  watcher.onDidCreate(connect);
-  watcher.onDidChange(connect);
-  watcher.onDidDelete(() => {
-    if (current) output.appendLine('Vite dev server stopped.');
-    disconnect();
-  });
-  connect(); // Vite may already be running when VS Code starts
-
-  return new vscode.Disposable(() => {
-    disconnect();
-    watcher.dispose();
-  });
+export interface BridgeConnection extends vscode.Disposable {
+  readonly onMessage: vscode.Event<BridgeEvent>;
 }
 
-function handleLine(line: string, output: vscode.OutputChannel): void {
-  const text = describeMessage(line);
-  if (text) output.appendLine(text);
+export function connectBridge(gitDir: string, output: vscode.OutputChannel): BridgeConnection {
+  const emitter = new vscode.EventEmitter<BridgeEvent>();
+  const client = startBridgeClient({
+    serversDir: path.join(gitDir, 'change-spotlight', 'servers'),
+    log: (msg) => output.appendLine(msg),
+  });
+  const unsubscribe = client.onMessage((event) => {
+    const text = describeMessage(JSON.stringify(event.message));
+    if (text) output.appendLine(text);
+    emitter.fire(event);
+  });
+  return {
+    onMessage: emitter.event,
+    dispose() {
+      unsubscribe();
+      client.dispose();
+      emitter.dispose();
+    },
+  };
 }

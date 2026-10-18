@@ -18,7 +18,8 @@ describe('describeMessage', () => {
   });
 
   it('stays quiet for hello, garbage and malformed messages', () => {
-    expect(describeMessage(line({ type: 'hello' }))).toBeNull();
+    expect(describeMessage(line({ type: 'hello', token: 't' }))).toBeNull();
+    expect(describeMessage(line({ type: 'welcome' }))).toBeNull();
     expect(describeMessage('not json')).toBeNull();
     expect(describeMessage(line({ type: 'visibility', page: '/' }))).toBeNull();
   });
