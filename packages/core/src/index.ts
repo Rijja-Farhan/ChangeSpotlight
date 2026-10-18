@@ -4,3 +4,6 @@ export * from './loc.js';
 export * from './match.js';
 export * from './paths.js';
 export * from './protocol.js';
+export * from './elements.js';
+export * from './hunkId.js';
+export * from './seenModel.js';
