@@ -17,6 +17,8 @@ export interface HunkStatus {
   seenOwners: number[];
   /** Pages the hunk's owners were seen on. */
   pages: string[];
+  /** Marked as seen by hand ("Mark as Seen"), not by the browser. */
+  manual?: boolean;
 }
 
 export interface SeenEntry {
@@ -25,6 +27,8 @@ export interface SeenEntry {
   pages: string[];
   /** Epoch ms when the last owner was seen. */
   seenAt?: number;
+  /** Set by "Mark as Seen". Optional, so version-1 snapshots without it still load. */
+  manual?: boolean;
   /** Epoch ms when the hunk was last part of the diff (for pruning). */
   lastInDiffAt: number;
 }
@@ -167,6 +171,27 @@ export class SeenModel {
     return { version: 1, entries };
   }
 
+  /** Mark a trackable hunk seen (all owners) or unseen (clear progress) by hand. */
+  setSeen(id: string, seen: boolean): boolean {
+    const index = this.statuses.findIndex((s) => s.id === id);
+    const status = this.statuses[index];
+    const entry = this.entries.get(id);
+    if (!status || status.status === 'untrackable' || !entry) return false;
+    const before = JSON.stringify(entry);
+    if (seen) {
+      entry.seenOwners = status.owners.map((_, i) => i);
+      entry.seenAt ??= this.now();
+      if (status.status !== 'seen') entry.manual = true;
+    } else {
+      entry.seenOwners = [];
+      entry.pages = [];
+      delete entry.seenAt;
+      delete entry.manual;
+    }
+    this.statuses[index] = this.statusOf(status.id, status.path, status.hunk, status.owners, entry);
+    return JSON.stringify(entry) !== before;
+  }
+
   /** Forget all seen progress (keeps the current hunk list). */
   reset(): void {
     this.entries.clear();
@@ -181,6 +206,9 @@ export class SeenModel {
 
   private statusOf(id: string, path: string, hunk: Hunk, owners: string[], entry: SeenEntry): HunkStatus {
     const seen = entry.seenOwners.length === owners.length;
-    return { id, path, hunk, status: seen ? 'seen' : 'unseen', owners, seenOwners: [...entry.seenOwners], pages: [...entry.pages] };
+    return {
+      id, path, hunk, status: seen ? 'seen' : 'unseen', owners, seenOwners: [...entry.seenOwners], pages: [...entry.pages],
+      ...(entry.manual ? { manual: true } : {}),
+    };
   }
 }

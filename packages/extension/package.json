@@ -12,18 +12,122 @@
     "onStartupFinished"
   ],
   "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "changeSpotlight",
+          "title": "Change Spotlight",
+          "icon": "media/spotlight.svg"
+        }
+      ]
+    },
+    "views": {
+      "changeSpotlight": [
+        {
+          "id": "changeSpotlight.changes",
+          "name": "Changes"
+        }
+      ]
+    },
+    "viewsWelcome": [
+      {
+        "view": "changeSpotlight.changes",
+        "when": "changeSpotlight.status == noFolder",
+        "contents": "Open a folder inside a git repository to see which changes you have looked at in the browser."
+      },
+      {
+        "view": "changeSpotlight.changes",
+        "when": "changeSpotlight.status == noRepo",
+        "contents": "This folder is not part of a git repository, so there are no changes to track."
+      },
+      {
+        "view": "changeSpotlight.changes",
+        "when": "changeSpotlight.status == gitMissing",
+        "contents": "git was not found on your PATH. Install git and reload the window."
+      },
+      {
+        "view": "changeSpotlight.changes",
+        "when": "changeSpotlight.status == loading",
+        "contents": "Reading your changes…"
+      },
+      {
+        "view": "changeSpotlight.changes",
+        "when": "changeSpotlight.status == error",
+        "contents": "Could not compute your changes. See the Change Spotlight output for details.\n[Refresh](command:changeSpotlight.refresh)"
+      },
+      {
+        "view": "changeSpotlight.changes",
+        "when": "changeSpotlight.status == noChanges",
+        "contents": "No changes compared to the base branch yet.\n[Refresh](command:changeSpotlight.refresh)"
+      }
+    ],
     "commands": [
       {
         "command": "changeSpotlight.refresh",
         "title": "Refresh Changes",
-        "category": "Change Spotlight"
+        "category": "Change Spotlight",
+        "icon": "$(refresh)"
       },
       {
         "command": "changeSpotlight.resetSeen",
         "title": "Reset Seen",
+        "category": "Change Spotlight",
+        "icon": "$(clear-all)"
+      },
+      {
+        "command": "changeSpotlight.openHunk",
+        "title": "Open Change",
+        "category": "Change Spotlight"
+      },
+      {
+        "command": "changeSpotlight.markSeen",
+        "title": "Mark as Seen",
+        "category": "Change Spotlight"
+      },
+      {
+        "command": "changeSpotlight.markUnseen",
+        "title": "Mark as Unseen",
         "category": "Change Spotlight"
       }
     ],
+    "menus": {
+      "commandPalette": [
+        {
+          "command": "changeSpotlight.openHunk",
+          "when": "false"
+        },
+        {
+          "command": "changeSpotlight.markSeen",
+          "when": "false"
+        },
+        {
+          "command": "changeSpotlight.markUnseen",
+          "when": "false"
+        }
+      ],
+      "view/title": [
+        {
+          "command": "changeSpotlight.refresh",
+          "when": "view == changeSpotlight.changes",
+          "group": "navigation@1"
+        },
+        {
+          "command": "changeSpotlight.resetSeen",
+          "when": "view == changeSpotlight.changes",
+          "group": "navigation@2"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "changeSpotlight.markSeen",
+          "when": "view == changeSpotlight.changes && viewItem == hunk.unseen"
+        },
+        {
+          "command": "changeSpotlight.markUnseen",
+          "when": "view == changeSpotlight.changes && viewItem == hunk.seen"
+        }
+      ]
+    },
     "configuration": {
       "title": "Change Spotlight",
       "properties": {
@@ -31,9 +135,36 @@
           "type": "string",
           "default": "",
           "markdownDescription": "Branch or ref to compare against (e.g. `main`, `origin/develop`). Empty = try `main`, `master`, `origin/main`, `origin/master` in that order."
+        },
+        "changeSpotlight.openOnClick": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "When you click an element in the browser, open its code in the editor (without taking focus)."
         }
       }
-    }
+    },
+    "colors": [
+      {
+        "id": "changeSpotlight.unseenRuler",
+        "description": "Overview ruler mark for changes not seen in the browser yet.",
+        "defaults": {
+          "dark": "#e8a33dcc",
+          "light": "#b26b00cc",
+          "highContrast": "#ffb000",
+          "highContrastLight": "#8a5300"
+        }
+      },
+      {
+        "id": "changeSpotlight.seenRuler",
+        "description": "Overview ruler mark for changes seen in the browser.",
+        "defaults": {
+          "dark": "#3fb95099",
+          "light": "#1a7f3799",
+          "highContrast": "#3fb950",
+          "highContrastLight": "#1a7f37"
+        }
+      }
+    ]
   },
   "scripts": {
     "build": "node scripts/build.mjs",

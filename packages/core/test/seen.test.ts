@@ -160,4 +160,31 @@ describe('SeenModel', () => {
     m.reset();
     expect(m.totals()).toEqual({ seen: 0, total: 1, untrackable: 0 });
   });
+
+  it('setSeen marks a hunk seen or unseen by hand, and survives a snapshot', () => {
+    const { m, now } = model();
+    m.update([file('a.tsx', [change(3, 2)]), file('x.css', [change(1, 1)])], new Map([['a.tsx', tree]]));
+    const [hunk, css] = m.hunks();
+    expect(m.setSeen(css!.id, true)).toBe(false); // untrackable
+    expect(m.setSeen('nope', true)).toBe(false);
+    expect(m.setSeen(hunk!.id, true)).toBe(true);
+    expect(m.hunks()[0]).toMatchObject({ status: 'seen', manual: true, seenOwners: [0, 1], pages: [] });
+    expect(m.setSeen(hunk!.id, true)).toBe(false); // nothing changed
+
+    const restored = new SeenModel(JSON.parse(JSON.stringify(m.snapshot())), () => now.t);
+    restored.update([file('a.tsx', [change(3, 2)])], new Map([['a.tsx', tree]]));
+    expect(restored.hunks()[0]).toMatchObject({ status: 'seen', manual: true });
+
+    expect(restored.setSeen(hunk!.id, false)).toBe(true);
+    expect(restored.hunks()[0]).toMatchObject({ status: 'unseen', seenOwners: [], pages: [] });
+    expect(restored.hunks()[0]?.manual).toBeUndefined();
+  });
+
+  it('does not flag a hunk as manual when the browser had already seen it', () => {
+    const { m } = model();
+    m.update([file('a.tsx', [change(3, 1)])], new Map([['a.tsx', tree]]));
+    m.markSeen('/', ['a.tsx:3-3']);
+    m.setSeen(m.hunks()[0]!.id, true);
+    expect(m.hunks()[0]?.manual).toBeUndefined();
+  });
 });

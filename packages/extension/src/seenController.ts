@@ -66,6 +66,11 @@ export class SeenController {
     if (this.apply(page, seen)) await this.persist();
   }
 
+  /** "Mark as Seen" / "Mark as Unseen" from the tree. */
+  async markHunk(id: string, seen: boolean): Promise<void> {
+    if (this.model?.setSeen(id, seen)) await this.persist();
+  }
+
   async reset(): Promise<void> {
     if (!this.model || !this.key) return;
     this.model.reset();
