@@ -1,8 +1,10 @@
 import { execFileSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import { PROTOCOL_VERSION } from '@change-spotlight/core';
 import { createFilter, type FilterPattern, type Plugin } from 'vite';
 import { startBridge, type Bridge } from './bridge.js';
 import { resolveId as resolveTarget } from './ids.js';
+import { createMessageHandler } from './messages.js';
 import { tagHostElements } from './transform.js';
 
 export interface ChangeSpotlightOptions {
@@ -17,18 +19,11 @@ export interface ChangeSpotlightOptions {
 const CLIENT_ID = 'virtual:change-spotlight/client';
 const RESOLVED_CLIENT_ID = '\0' + CLIENT_ID;
 
-// Runs in the browser. SPIKE: reports clicks; the visibility sensor comes in Phase 5.
-const clientCode = `
-const PROTOCOL_VERSION = ${JSON.stringify(PROTOCOL_VERSION)};
-document.addEventListener('click', (event) => {
-  const el = event.target instanceof Element ? event.target.closest('[data-cs-loc]') : null;
-  if (!el || !import.meta.hot) return;
-  import.meta.hot.send('cs:click', {
-    protocolVersion: PROTOCOL_VERSION,
-    loc: el.getAttribute('data-cs-loc'),
-    page: location.pathname,
-  });
-}, true);
+// The browser client is a real module in src/client/ (dist/client/ once built). The virtual module
+// only imports it by absolute path; from src/ under Vitest that is the .ts file itself.
+const clientFile = fileURLToPath(new URL(`./client/index.${import.meta.url.endsWith('.ts') ? 'ts' : 'js'}`, import.meta.url));
+const clientEntry = `import { startClient } from ${JSON.stringify('/@fs/' + clientFile.replace(/\\/g, '/').replace(/^\/+/, ''))};
+startClient({ protocolVersion: ${JSON.stringify(PROTOCOL_VERSION)}, hot: import.meta.hot });
 `;
 
 function findRepoRoot(dir: string): string | null {
@@ -66,20 +61,20 @@ export default function changeSpotlight(options: ChangeSpotlightOptions = {}): P
       bridge = startBridge(repoRoot, log);
       server.httpServer?.once('close', closeBridge);
 
-      server.ws.on('cs:click', (data: { protocolVersion?: unknown; loc?: unknown; page?: unknown }) => {
-        if (typeof data?.loc !== 'string') return;
-        bridge?.send({ protocolVersion: PROTOCOL_VERSION, type: 'click', loc: data.loc, page: data.page });
-      });
+      for (const event of ['cs:click', 'cs:visibility'] as const) {
+        server.ws.on(event, createMessageHandler(event, (message) => bridge?.send(message), log));
+      }
     },
 
     // Vite calls this on server.close(), also for middleware-mode servers that have no httpServer.
     closeBundle: closeBridge,
+
     resolveId(id) {
       return id === CLIENT_ID ? RESOLVED_CLIENT_ID : undefined;
     },
 
     load(id) {
-      return id === RESOLVED_CLIENT_ID ? clientCode : undefined;
+      return id === RESOLVED_CLIENT_ID ? clientEntry : undefined;
     },
 
     // order 'pre' so Vite still processes the injected inline module and rewrites the virtual import.

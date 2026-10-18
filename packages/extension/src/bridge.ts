@@ -2,7 +2,7 @@
 import * as fs from 'node:fs';
 import * as http from 'node:http';
 import * as vscode from 'vscode';
-import { PROTOCOL_VERSION } from '@change-spotlight/core';
+import { describeMessage } from './bridgeMessages';
 
 const DISCOVERY_FILE = '.change-spotlight/dev-server.json';
 
@@ -69,20 +69,6 @@ export function startBridgeClient(repoRoot: string, output: vscode.OutputChannel
 }
 
 function handleLine(line: string, output: vscode.OutputChannel): void {
-  let message: { protocolVersion?: unknown; type?: unknown; loc?: unknown; page?: unknown };
-  try {
-    message = JSON.parse(line);
-  } catch {
-    return;
-  }
-  if (message.protocolVersion !== PROTOCOL_VERSION) {
-    output.appendLine(`Ignored message with protocol version ${String(message.protocolVersion)} (expected ${PROTOCOL_VERSION}).`);
-    return;
-  }
-  if (message.type === 'click' && typeof message.loc === 'string') {
-    // loc is "path:start-end"; report "path:start" like a normal file:line reference.
-    const match = /^(.*):(\d+)-(\d+)$/.exec(message.loc);
-    const fileLine = match ? `${match[1]}:${match[2]}` : message.loc;
-    output.appendLine(`Clicked ${fileLine}  (element spans ${message.loc}, page ${String(message.page)})`);
-  }
+  const text = describeMessage(line);
+  if (text) output.appendLine(text);
 }

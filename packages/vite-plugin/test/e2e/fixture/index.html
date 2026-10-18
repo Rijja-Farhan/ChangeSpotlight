@@ -1,0 +1,23 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <title>sensor fixture</title>
+    <style>
+      body { margin: 0; }
+      .box { height: 100px; }
+      .spacer { height: 2000px; }
+    </style>
+  </head>
+  <body>
+    <div class="box" data-cs-loc="fx:top">top</div>
+    <div class="box" data-cs-loc="fx:vis-hidden" style="visibility: hidden">hidden</div>
+    <div class="box" data-cs-loc="fx:opacity" style="opacity: 0">transparent</div>
+    <div data-cs-loc="fx:zero" style="height: 0"></div>
+    <div class="spacer"></div>
+    <div class="box" id="pass" data-cs-loc="fx:pass">passed quickly</div>
+    <div class="spacer"></div>
+    <div class="box" id="target" data-cs-loc="fx:target">target</div>
+    <div style="height: 200px"></div>
+  </body>
+</html>
