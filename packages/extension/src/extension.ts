@@ -3,6 +3,8 @@ import { changedRanges, toRepoRelative, type LineRange } from '@change-spotlight
 import { connectBridge } from './bridge';
 import { ChangeTracker } from './changeTracker';
 import { describeBase, findRepo, type ChangeResult } from './git';
+import { SeenController, type SeenState } from './seenController';
+import { SeenStore } from './seenStore';
 
 let output: vscode.OutputChannel;
 let dot: vscode.TextEditorDecorationType;
@@ -38,21 +40,47 @@ async function start(context: vscode.ExtensionContext): Promise<void> {
   }
   repoRoot = found.repo.root;
 
+  const status = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 50);
+  status.command = 'changeSpotlight.refresh';
+  status.tooltip = 'Change Spotlight: changes shown in the browser. Click to refresh.';
+
+  const seen = new SeenController(
+    new SeenStore(context.workspaceState),
+    (msg) => output.appendLine(msg),
+    (state) => updateStatus(status, state),
+  );
   const tracker = new ChangeTracker(found.repo);
+  const bridge = connectBridge(found.repo.gitDir, output);
+
   context.subscriptions.push(
+    status,
     tracker,
+    bridge,
     tracker.onDidChange((result) => {
       log(result, false);
       ranges = result.ok ? changedRanges(result.files) : new Map();
       decorateVisibleEditors();
+      void seen.applyResult(result);
+    }),
+    bridge.onMessage(({ message }) => {
+      if (message.type === 'visibility') void seen.visibility(message.page, message.seen, tracker.busy);
     }),
     vscode.commands.registerCommand('changeSpotlight.refresh', async () => {
       output.show(true);
       log(await tracker.refresh(), true);
     }),
-    connectBridge(found.repo.gitDir, output),
+    vscode.commands.registerCommand('changeSpotlight.resetSeen', async () => {
+      await seen.reset();
+      output.appendLine('Seen progress reset for this branch.');
+    }),
   );
   tracker.schedule();
+}
+
+function updateStatus(status: vscode.StatusBarItem, state: SeenState): void {
+  const { seen, total } = state.totals;
+  status.text = `$(eye) Seen ${seen}/${total}`;
+  status.show();
 }
 
 function log(result: ChangeResult, detailed: boolean): void {

@@ -17,6 +17,11 @@
         "command": "changeSpotlight.refresh",
         "title": "Refresh Changes",
         "category": "Change Spotlight"
+      },
+      {
+        "command": "changeSpotlight.resetSeen",
+        "title": "Reset Seen",
+        "category": "Change Spotlight"
       }
     ],
     "configuration": {
@@ -31,8 +36,8 @@
     }
   },
   "scripts": {
-    "build": "esbuild src/extension.ts --bundle --platform=node --format=cjs --target=node20 --external:vscode --sourcemap --outfile=dist/extension.js",
-    "watch": "esbuild src/extension.ts --bundle --platform=node --format=cjs --target=node20 --external:vscode --sourcemap --outfile=dist/extension.js --watch",
+    "build": "node scripts/build.mjs",
+    "watch": "node scripts/build.mjs --watch",
     "typecheck": "tsc -p . --noEmit && tsc -p tsconfig.test.json",
     "test": "vitest run",
     "test:watch": "vitest"

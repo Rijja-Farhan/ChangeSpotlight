@@ -150,6 +150,8 @@ export type ChangeResult =
   | {
       ok: true;
       root: string;
+      /** Current branch name, or null for a detached HEAD. */
+      branch: string | null;
       base: BaseInfo;
       /** Tracked changes followed by untracked files (status 'added'). */
       files: DiffFile[];
@@ -195,7 +197,9 @@ export async function computeChanges(root: string, configured: string, exec: Git
         // Deleted between ls-files and now: nothing to show.
       }
     }
-    return { ok: true, root, base, files, untracked, skipped };
+    const symbolic = await exec(['symbolic-ref', '-q', '--short', 'HEAD'], root);
+    const branch = symbolic.code === 0 ? symbolic.stdout.trim() || null : null;
+    return { ok: true, root, branch, base, files, untracked, skipped };
   } catch (err) {
     if (err instanceof GitExecError) {
       if (err.kind === 'git-missing') return { ok: false, reason: 'git-missing', message: err.message };

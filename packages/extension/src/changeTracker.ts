@@ -49,15 +49,24 @@ export class ChangeTracker implements vscode.Disposable {
     return this.lastResult;
   }
 
+  /** True while a recompute is scheduled or running: line numbers may be about to change. */
+  get busy(): boolean {
+    return this.timer !== undefined || this.running;
+  }
+
   /** Debounced recompute. */
   schedule(): void {
     clearTimeout(this.timer);
-    this.timer = setTimeout(() => void this.run(), DEBOUNCE_MS);
+    this.timer = setTimeout(() => {
+      this.timer = undefined;
+      void this.run();
+    }, DEBOUNCE_MS);
   }
 
   /** Recompute now (or right after the current run) and resolve with the fresh result. */
   async refresh(): Promise<ChangeResult> {
     clearTimeout(this.timer);
+    this.timer = undefined;
     await this.run();
     // If a run was already active, run() only set the rerun flag; wait for that follow-up run.
     while (this.running) await new Promise((r) => setTimeout(r, 20));
