@@ -1,18 +1,26 @@
-// SPIKE: tags host elements with data-cs-loc. Hardened version + fixture tests come in Phase 4.
-import MagicString from 'magic-string';
-import { parseSync } from 'oxc-parser';
+// Adds data-cs-loc="path:start-end" to every host element (div, button, my-widget…) in a JSX file.
+// Pure: no fs, git or Vite imports, so it can be tested on plain strings.
+import { formatLoc } from '@change-spotlight/core';
+import MagicString, { type SourceMap } from 'magic-string';
+import { parseSync, Visitor } from 'oxc-parser';
 
-interface Node {
-  type?: string;
-  start: number;
-  end: number;
-  [key: string]: unknown;
+export interface TagOptions {
+  /** Absolute file name, used as the source-map source. */
+  filename: string;
+  /** Repo-relative path written into data-cs-loc. */
+  relPath: string;
+  lang: 'jsx' | 'tsx';
 }
 
-/** Offsets of the first character of every line, for offset -> 1-based line lookup. */
+/** Same rule React's JSX compilers use to decide "string tag" vs component. */
+export function isHostTag(name: string): boolean {
+  return name !== 'this' && (/^[a-z]/.test(name) || name.includes('-'));
+}
+
+/** Offsets of each line start. Only "\n" ends a line, as in git, so CRLF works and a lone "\r" does not. */
 function lineStarts(code: string): number[] {
   const starts = [0];
-  for (let i = 0; i < code.length; i++) if (code[i] === '\n') starts.push(i + 1);
+  for (let i = code.indexOf('\n'); i !== -1; i = code.indexOf('\n', i + 1)) starts.push(i + 1);
   return starts;
 }
 
@@ -27,39 +35,34 @@ function lineOf(starts: number[], offset: number): number {
   return lo + 1;
 }
 
-/**
- * Adds data-cs-loc="relPath:start-end" to every lowercase host element (div, button…).
- * Components (<Foo>, <motion.div>) and fragments are left alone.
- */
-export function tagHostElements(code: string, filename: string, relPath: string) {
-  const result = parseSync(filename, code, { lang: filename.endsWith('.jsx') ? 'jsx' : 'tsx' });
-  if (result.errors.length > 0) return null; // let the normal pipeline report syntax errors
+export function tagHostElements(code: string, options: TagOptions): { code: string; map: SourceMap } | null {
+  if (!code.includes('<')) return null;
+  const parsed = parseSync(options.filename, code, { lang: options.lang });
+  if (parsed.errors.length > 0) return null; // let the normal pipeline report the syntax error
 
   const s = new MagicString(code);
-  const starts = lineStarts(code);
+  let starts: number[] | undefined;
 
-  const visit = (value: unknown): void => {
-    if (!value || typeof value !== 'object') return;
-    if (Array.isArray(value)) {
-      for (const item of value) visit(item);
-      return;
-    }
-    const node = value as Node;
-    if (node.type === 'JSXElement') {
-      const opening = node.openingElement as Node & { name: Node & { name?: string }; attributes: Node[] };
-      const isHost = opening.name.type === 'JSXIdentifier' && /^[a-z]/.test(opening.name.name ?? '');
-      const alreadyTagged = opening.attributes.some(
-        (a) => (a.name as { name?: string } | undefined)?.name === 'data-cs-loc',
+  new Visitor({
+    JSXElement(node) {
+      const opening = node.openingElement;
+      if (opening.name.type !== 'JSXIdentifier' || !isHostTag(opening.name.name)) return;
+      const explicit = opening.attributes.some(
+        (a) => a.type === 'JSXAttribute' && a.name.type === 'JSXIdentifier' && a.name.name === 'data-cs-loc',
       );
-      if (isHost && !alreadyTagged) {
-        const loc = `${relPath}:${lineOf(starts, node.start)}-${lineOf(starts, node.end - 1)}`;
-        s.appendLeft(opening.name.end, ` data-cs-loc="${loc}"`);
-      }
-    }
-    for (const key in node) if (key !== 'parent') visit(node[key]);
-  };
-  visit(result.program);
+      if (explicit) return;
+
+      starts ??= lineStarts(code);
+      const value = formatLoc({ path: options.relPath, start: lineOf(starts, node.start), end: lineOf(starts, node.end - 1) });
+      // After the last attribute: React merges props left to right, so a spread like {...props}
+      // placed after our attribute could otherwise override it.
+      const last = opening.attributes[opening.attributes.length - 1];
+      const at = last ? last.end : opening.name.end;
+      // Expression form: JSX string attributes have no escapes and decode HTML entities.
+      s.appendLeft(at, ` data-cs-loc={${JSON.stringify(value)}}`);
+    },
+  }).visit(parsed.program);
 
   if (!s.hasChanged()) return null;
-  return { code: s.toString(), map: s.generateMap({ source: filename, includeContent: true, hires: true }) };
+  return { code: s.toString(), map: s.generateMap({ source: options.filename, includeContent: true, hires: true }) };
 }
