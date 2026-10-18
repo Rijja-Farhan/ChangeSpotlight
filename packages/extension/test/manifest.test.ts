@@ -42,6 +42,6 @@ describe('package.json contributions', () => {
     const colors = new Set(pkg.contributes.colors.map((c: { id: string }) => c.id));
     for (const m of sources.matchAll(/ThemeColor\('([\w.]+)'\)/g)) expect(colors.has(m[1])).toBe(true);
     const settings = Object.keys(pkg.contributes.configuration.properties);
-    for (const m of sources.matchAll(/getConfiguration\('changeSpotlight'\)\.get<\w+>\('(\w+)'/g)) expect(settings).toContain(`changeSpotlight.${m[1]}`);
+    for (const m of sources.matchAll(/getConfiguration\('changeSpotlight'\)\.get<\w+>\('([\w.]+)'/g)) expect(settings).toContain(`changeSpotlight.${m[1]}`);
   });
 });

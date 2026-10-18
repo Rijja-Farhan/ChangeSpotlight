@@ -75,7 +75,7 @@ describe('production build', () => {
       expect(js.length).toBeGreaterThan(0);
       for (const f of js) {
         const text = readFileSync(path.join(outDir, 'assets', f), 'utf8');
-        for (const marker of ['data-cs-loc', 'virtual:change-spotlight', 'cs:click', 'cs:overlay', 'cs:open', 'cs:mark', 'change-spotlight-overlay', 'data-cs-outline', 'data-cs-ring', 'data-cs-pill', 'data-cs-panel', 'data-cs-arrow']) expect(text).not.toContain(marker);
+        for (const marker of ['data-cs-loc', 'virtual:change-spotlight', 'cs:click', 'cs:overlay', 'cs:open', 'cs:mark', 'change-spotlight-overlay', 'data-cs-outline', 'data-cs-ring', 'data-cs-pill', 'data-cs-panel', 'data-cs-arrow', 'data-cs-card', 'change-spotlight:timing']) expect(text).not.toContain(marker);
       }
     } finally {
       process.env.NODE_ENV = env;

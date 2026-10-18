@@ -135,3 +135,17 @@ describe('openTarget', () => {
     expect(openTarget(input)).toBeNull();
   });
 });
+
+describe('overlay settings', () => {
+  it('are sent with the overlay once set, and setting them sends right away', () => {
+    const sent: OverlayMessage[] = [];
+    const publisher = new OverlayPublisher((m) => sent.push(m), { setTimeout: () => 0, clearTimeout: () => {} });
+    expect(buildOverlay(state([])).settings).toBeUndefined();
+    publisher.setSettings({ showByDefault: true, hideSeen: false }); // no state yet: nothing to send
+    expect(sent).toHaveLength(0);
+    publisher.update(state([status('a', A, hunk(1, 1))]));
+    publisher.setSettings({ showByDefault: false, hideSeen: true });
+    expect(sent.map((m) => m.settings)).toEqual([{ showByDefault: false, hideSeen: true }]);
+    expect(parseMessage(sent[0]).ok).toBe(true);
+  });
+});

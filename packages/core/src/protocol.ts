@@ -55,6 +55,14 @@ export interface OverlayItem {
   pages: string[];
 }
 
+/** VS Code settings for the overlay. A choice made in the page (per tab) wins over these. */
+export interface OverlaySettings {
+  /** Show outlines when the page has no choice stored. */
+  showByDefault: boolean;
+  /** Hide the outlines of seen changes when the page has no choice stored. */
+  hideSeen: boolean;
+}
+
 /** VS Code -> browser (relayed by the plugin): everything the overlay draws. */
 export interface OverlayMessage extends Versioned {
   type: 'overlay';
@@ -65,6 +73,8 @@ export interface OverlayMessage extends Versioned {
   pages: string[];
   /** Locs of items not seen on any page yet. */
   unplaced: string[];
+  /** Optional, so overlays from older extensions still parse. */
+  settings?: OverlaySettings;
 }
 
 /** Browser -> VS Code: "Open in VS Code". `path` is repo-relative. */
@@ -163,7 +173,8 @@ function isOverlay(v: Record<string, unknown>): boolean {
     Array.isArray(v.items) &&
     v.items.every(isOverlayItem) &&
     isStrings(v.pages) &&
-    isStrings(v.unplaced)
+    isStrings(v.unplaced) &&
+    (v.settings === undefined || (isRecord(v.settings) && typeof v.settings.showByDefault === 'boolean' && typeof v.settings.hideSeen === 'boolean'))
   );
 }
 

@@ -73,3 +73,13 @@ describe('inViewport', () => {
     expect(inViewport(box(10, -100, 100, 50), viewport)).toBe(false);
   });
 });
+
+describe('placeLabels when packed densely', () => {
+  it('leaves out labels with no free spot nearby, and never overlaps the rest', () => {
+    const requests = Array.from({ length: 500 }, (_, i) => ({ key: `k${i}`, box: box((i % 25) * 30, Math.floor(i / 25) * 28 + 40, 26, 24), width: 180 }));
+    const placed = [...placeLabels(requests, viewport).values()];
+    expect(placed.length).toBeGreaterThan(20);
+    expect(placed.length).toBeLessThan(500);
+    for (let i = 0; i < placed.length; i++) for (let j = i + 1; j < placed.length; j++) expect(intersects(placed[i]!, placed[j]!)).toBe(false);
+  });
+});

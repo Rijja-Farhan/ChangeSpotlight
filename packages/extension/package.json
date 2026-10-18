@@ -140,6 +140,16 @@
           "type": "boolean",
           "default": false,
           "markdownDescription": "When you click an element in the browser, open its code in the editor (without taking focus)."
+        },
+        "changeSpotlight.overlay.showByDefault": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Show the browser overlay (outlines and labels on changed elements) when a page opens. The eye button and `Alt+Shift+S` still toggle it per browser tab."
+        },
+        "changeSpotlight.overlay.hideSeen": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "In the browser overlay, hide the outlines of changes you have already seen. The overlay panel can still change this per browser tab."
         }
       }
     },
@@ -179,6 +189,7 @@
     "@types/vscode": "~1.100.0",
     "@types/ws": "^8.18.2",
     "esbuild": "0.28.2",
+    "playwright-core": "^1.64.1",
     "vite": "^8.3.4",
     "vitest": "^5.0.5",
     "ws": "^8.22.0"

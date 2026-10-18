@@ -109,6 +109,7 @@ describe('overlay, open and mark', () => {
   it.each([
     overlay,
     { ...overlay, branch: null, items: [], pages: [] },
+    { ...overlay, settings: { showByDefault: false, hideSeen: true } },
     { protocolVersion: v, type: 'open', path: 'src/App.tsx', line: 3 },
     { protocolVersion: v, type: 'mark', hunkIds: ['a#1'] },
     { protocolVersion: v, type: 'mark', hunkIds: [] },
@@ -130,6 +131,9 @@ describe('overlay, open and mark', () => {
     { ...overlay, items: [null] },
     { ...overlay, unplaced: [7] },
     { ...overlay, pages: undefined },
+    { ...overlay, settings: { showByDefault: 'yes', hideSeen: false } },
+    { ...overlay, settings: { showByDefault: true } },
+    { ...overlay, settings: null },
     { protocolVersion: v, type: 'open', path: '', line: 3 },
     { protocolVersion: v, type: 'open', path: 'a.tsx', line: 0 },
     { protocolVersion: v, type: 'open', path: 'a.tsx', line: '3' },

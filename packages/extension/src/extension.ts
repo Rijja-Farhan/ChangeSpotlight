@@ -55,6 +55,12 @@ async function start(context: vscode.ExtensionContext, tree: ChangesTreeProvider
   const bridge = connectBridge(found.repo.gitDir, output);
   const tracker = new ChangeTracker(found.repo);
   const overlay = new OverlayPublisher((message) => bridge.send(message));
+  const readOverlaySettings = () =>
+    overlay.setSettings({
+      showByDefault: vscode.workspace.getConfiguration('changeSpotlight').get<boolean>('overlay.showByDefault', true),
+      hideSeen: vscode.workspace.getConfiguration('changeSpotlight').get<boolean>('overlay.hideSeen', false),
+    });
+  readOverlaySettings();
 
   const render = (state: SeenState) => {
     tree.update(state);
@@ -78,6 +84,9 @@ async function start(context: vscode.ExtensionContext, tree: ChangesTreeProvider
     bridge,
     overlay,
     vscode.window.onDidChangeVisibleTextEditors(() => gutter.apply()),
+    vscode.workspace.onDidChangeConfiguration((e) => {
+      if (e.affectsConfiguration('changeSpotlight.overlay')) readOverlaySettings();
+    }),
     bridge.onDidChangeConnection(() => {
       updateMessage(view, bridge, seen.state);
       overlay.flush(); // a newly connected dev server gets the overlay right away

@@ -56,7 +56,8 @@ button, a { font: inherit; }
 .foot input { width: 16px; height: 16px; margin: 0; accent-color: #f59e0b; }
 .foot .keys { font-size: 12px; color: #a8a49b; }
 .foot kbd { font: 12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color: #d8d5ce; }
-.arrow:focus-visible, .open:focus-visible, .close:focus-visible, .action:focus-visible, .foot input:focus-visible { outline: 2px solid #fbbf72; outline-offset: 2px; }
+/* One focus ring for every control: amber inside a dark ring, visible on light and dark pages. */
+button:focus-visible, a:focus-visible, input:focus-visible { outline: 2px solid #fbbf72 !important; outline-offset: 2px; box-shadow: 0 0 0 6px #1d1c1a !important; }
 `;
 
 const ARROW_ICONS: Record<Direction, string> = {
@@ -90,7 +91,8 @@ const escapeHtml = (text: string) => text.replace(/[&<>"']/g, (ch) => `&#${ch.ch
 export interface FinderState {
   overlay: OverlayMessage | undefined;
   counts: Record<Direction, number>;
-  sections: Sections;
+  /** Only computed while the panel is open. */
+  sections: Sections | undefined;
   /** Outlines shown (the eye / Alt+Shift+S). Arrows show only then. */
   visible: boolean;
   hideSeen: boolean;
@@ -101,11 +103,15 @@ export interface FinderCallbacks {
   scrollToward(direction: Direction): void;
   setVisible(visible: boolean): void;
   setHideSeen(hide: boolean): void;
+  /** The panel opened or closed (its lists are only computed while open). */
+  panelToggled(): void;
 }
 
 export interface FinderUi {
   update(state: FinderState): void;
   panelOpen(): boolean;
+  /** Close the panel; `focusPill` moves focus back to the pill's button. */
+  closePanel(focusPill: boolean): void;
 }
 
 /** Builds the controls inside `root`; `eye` (the existing toggle) moves into the pill. */
@@ -160,12 +166,15 @@ export function createFinderUi(root: ShadowRoot, eye: HTMLButtonElement, callbac
   const sectionsEl = panel.querySelector('.sections') as HTMLDivElement;
   const outlinesBox = panel.querySelector('[data-cs-check="outlines"]') as HTMLInputElement;
   const hideSeenBox = panel.querySelector('[data-cs-check="hide-seen"]') as HTMLInputElement;
-  let sectionsHtml = '';
+  let structure = '';
+  /** loc -> its row's note span ("(below the fold)"), updated in place while scrolling. */
+  const notes = new Map<string, Element>();
   let openHtml = '';
 
   const setOpen = (next: boolean, focus: boolean) => {
     panel.hidden = !next;
     open.setAttribute('aria-expanded', String(next));
+    callbacks.panelToggled();
     if (next && focus) (panel.querySelector('.close') as HTMLButtonElement).focus();
     if (!next && focus) open.focus();
   };
@@ -174,11 +183,6 @@ export function createFinderUi(root: ShadowRoot, eye: HTMLButtonElement, callbac
     setOpen(next, next);
   });
   panel.querySelector('.close')!.addEventListener('click', () => setOpen(false, true));
-  panel.addEventListener('keydown', (event) => {
-    if (event.key !== 'Escape') return;
-    event.stopPropagation();
-    setOpen(false, true);
-  });
   outlinesBox.addEventListener('change', () => callbacks.setVisible(outlinesBox.checked));
   hideSeenBox.addEventListener('change', () => callbacks.setHideSeen(hideSeenBox.checked));
   sectionsEl.addEventListener('click', (event) => {
@@ -198,11 +202,12 @@ export function createFinderUi(root: ShadowRoot, eye: HTMLButtonElement, callbac
           ? `<a class="action" href="${escapeHtml(r.page!)}" aria-label="Open ${escapeHtml(r.page!)} to see ${where}">Open page</a>`
           : `<span class="hint">${escapeHtml(NOWHERE_HINT)}</span>`;
     const dot = kind === 'none' ? DOTS.nowhere : DOTS[r.item.status];
-    return `<div class="row" data-cs-row data-loc="${loc}" data-status="${r.item.status}">${dot}<span class="where">${where}<span class="sr"> (${status})</span>${note ? ` <span class="note">${note}</span>` : ''}</span>${action}</div>`;
+    return `<div class="row" data-cs-row data-loc="${loc}" data-status="${r.item.status}">${dot}<span class="where">${where}<span class="sr"> (${status})</span><span class="note">${note ? ` ${note}` : ''}</span></span>${action}</div>`;
   };
 
   return {
     panelOpen: () => !panel.hidden,
+    closePanel: (focusPill) => setOpen(false, focusPill),
     update({ overlay, counts, sections, visible, hideSeen }) {
       for (const [d, button] of arrows) {
         const n = visible && overlay ? counts[d] : 0;
@@ -234,6 +239,29 @@ export function createFinderUi(root: ShadowRoot, eye: HTMLButtonElement, callbac
       if (summary.innerHTML !== nextSummary) summary.innerHTML = nextSummary;
       bar.style.width = `${Math.round(fraction * 100)}%`;
 
+      if (!sections) return;
+      // Rows change position notes on every scroll; rebuild only when the lists themselves change.
+      const shape = JSON.stringify([
+        sections.thisPageLeft,
+        sections.thisPage.map((r) => [r.item.loc, r.item.status, r.item.line]),
+        sections.otherPages.map((r) => [r.item.loc, r.page, r.item.line]),
+        sections.nowhere.map((r) => [r.item.loc, r.item.line]),
+      ]);
+      if (shape !== structure) {
+        structure = shape;
+        rebuild(sections);
+      }
+      for (const r of sections.thisPage) {
+        const note = rowNote(r);
+        const text = note ? ` ${note}` : '';
+        const el = notes.get(r.item.loc);
+        if (el && el.textContent !== text) el.textContent = text;
+      }
+    },
+  };
+
+  function rebuild(sections: Sections): void {
+    {
       let html = '';
       if (sections.thisPage.length > 0) {
         html += `<section data-cs-section="this"><h3 class="heading">On this page · ${sections.thisPageLeft} left</h3>${sections.thisPage.map((r) => row(r, 'this')).join('')}</section>`;
@@ -245,17 +273,16 @@ export function createFinderUi(root: ShadowRoot, eye: HTMLButtonElement, callbac
         html += `<section data-cs-section="none"><h3 class="heading">Not on any page yet</h3>${sections.nowhere.map((r) => row(r, 'none')).join('')}</section>`;
       }
       if (html === '') html = '<div class="empty">Nothing left to look at</div>';
-      // Rebuild only when the lists change, and give focus back to the same control afterwards.
-      if (html !== sectionsHtml) {
-        const focused = root.activeElement;
-        const key = focused && sectionsEl.contains(focused) ? (focused.getAttribute('data-scroll') ?? focused.getAttribute('href')) : null;
-        sectionsHtml = html;
-        sectionsEl.innerHTML = html;
-        if (key !== null) {
-          const again = [...sectionsEl.querySelectorAll<HTMLElement>('.action')].find((el) => (el.getAttribute('data-scroll') ?? el.getAttribute('href')) === key);
-          again?.focus();
-        }
+      // Give focus back to the same control after the rebuild.
+      const focused = root.activeElement;
+      const key = focused && sectionsEl.contains(focused) ? (focused.getAttribute('data-scroll') ?? focused.getAttribute('href')) : null;
+      sectionsEl.innerHTML = html;
+      notes.clear();
+      for (const row of sectionsEl.querySelectorAll('[data-cs-section="this"] [data-cs-row]')) notes.set(row.getAttribute('data-loc')!, row.querySelector('.note')!);
+      if (key !== null) {
+        const again = [...sectionsEl.querySelectorAll<HTMLElement>('.action')].find((el) => (el.getAttribute('data-scroll') ?? el.getAttribute('href')) === key);
+        again?.focus();
       }
-    },
-  };
+    }
+  }
 }

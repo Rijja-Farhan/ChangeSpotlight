@@ -5,7 +5,8 @@
 // in outlines.ts; this file only measures and draws, at most once per animation frame.
 import type { OverlayItem, OverlayMessage } from '@change-spotlight/core';
 import { inViewport, LABEL_HEIGHT, labelText, placeLabels, type LabelRequest, type Rect } from './outlines.js';
-import { onOverlay } from './overlayData.js';
+import { onOverlay, requestMark, requestOpen } from './overlayData.js';
+import { CARD_STYLE, createCard, placeCard } from './card.js';
 import { edgeCounts, nearest, panelSections, type Direction } from './finder.js';
 import { createFinderUi, FINDER_STYLE, HIDE_SEEN_KEY } from './finderUi.js';
 import { COUNTING_TEXT, flashLocs, isCounting, ringOffset } from './live.js';
@@ -13,6 +14,9 @@ import { DWELL_MS } from './seen.js';
 
 export const HOST_TAG = 'change-spotlight-overlay';
 export const STORAGE_KEY = 'change-spotlight:outlines';
+/** Set this sessionStorage key to "on" to record each draw pass as a User Timing measure (DevTools > Performance). */
+export const TIMING_KEY = 'change-spotlight:timing';
+export const DRAW_MEASURE = 'change-spotlight:draw';
 const ATTR = 'data-cs-loc';
 const FONT = '12px ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace';
 /** Outlines further than this outside the viewport are not drawn. */
@@ -28,8 +32,9 @@ ${FINDER_STYLE}
 .outline { position: absolute; box-sizing: border-box; border-radius: 2px; outline-offset: 3px; pointer-events: none; }
 .outline[data-status="unseen"], .outline[data-status="partly"] { outline: 2px dashed #b45309; box-shadow: 0 0 0 9px rgba(180, 83, 9, 0.12); }
 .outline[data-status="seen"] { outline: 2px solid #15803d; }
-.label { position: absolute; box-sizing: border-box; height: ${LABEL_HEIGHT}px; padding: 0 8px; border-radius: 4px; display: flex; align-items: center; gap: 6px;
-  color: #ffffff; font: ${FONT}; line-height: ${LABEL_HEIGHT}px; white-space: nowrap; overflow: hidden; pointer-events: none; }
+.label { position: absolute; box-sizing: border-box; height: ${LABEL_HEIGHT}px; padding: 0 8px; margin: 0; border: 0; border-radius: 4px; display: flex; align-items: center; gap: 6px;
+  color: #ffffff; font: ${FONT}; line-height: ${LABEL_HEIGHT}px; white-space: nowrap; overflow: hidden; text-align: left; cursor: default; pointer-events: auto; }
+${CARD_STYLE}
 .label[data-status="unseen"], .label[data-status="partly"] { background: #b45309; }
 .label[data-status="seen"] { background: #15803d; }
 .label svg { flex: none; }
@@ -49,7 +54,6 @@ ${FINDER_STYLE}
   display: flex; align-items: center; justify-content: center; background: #1d1c1a; color: #f6f5f2; cursor: pointer;
   box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25); pointer-events: auto; }
 .eye:hover { background: #34322e; }
-.eye:focus-visible { outline: 2px solid #fbbf72; outline-offset: 2px; }
 .eye[aria-pressed="false"] { opacity: 0.85; }
 `;
 
@@ -80,13 +84,13 @@ export interface OverlayLayer {
   stop(): void;
 }
 
-/** Per-tab on/off flags in sessionStorage; `fallback` when unset or storage is blocked. */
-function readFlag(key: string, fallback: boolean): boolean {
+/** Per-tab on/off choice in sessionStorage; null when the tab has not chosen (or storage is blocked). */
+function readFlag(key: string): boolean | null {
   try {
     const value = sessionStorage.getItem(key);
-    return value === null ? fallback : value === 'on';
+    return value === null ? null : value === 'on';
   } catch {
-    return fallback;
+    return null;
   }
 }
 
@@ -113,7 +117,10 @@ export function startOverlayLayer(): OverlayLayer {
 
   let overlay: OverlayMessage | undefined;
   let items: OverlayItem[] = [];
-  let hideSeen = readFlag(HIDE_SEEN_KEY, false);
+  // A choice made in this tab wins; otherwise VS Code's settings (sent with the overlay) decide.
+  let chosenHideSeen = readFlag(HIDE_SEEN_KEY);
+  let chosenVisible = readFlag(STORAGE_KEY);
+  let hideSeen = chosenHideSeen ?? false;
   /** From the last draw, for arrow clicks: loc -> boxes, and loc -> elements (document order). */
   let lastPresent = new Map<string, Rect[]>();
   let lastElements = new Map<string, Element[]>();
@@ -125,11 +132,51 @@ export function startOverlayLayer(): OverlayLayer {
   /** loc -> when its flash ends. */
   const flashing = new Map<string, number>();
   const reducedMotion = typeof matchMedia === 'function' ? matchMedia('(prefers-reduced-motion: reduce)') : undefined;
-  let visible = readFlag(STORAGE_KEY, true);
+  let visible = chosenVisible ?? true;
   let frame = 0;
+  const timing = readFlag(TIMING_KEY) === true;
   /** Drawn nodes by key ("loc\n<instance>"), reused across frames. */
   const outlines = new Map<string, HTMLDivElement>();
-  const labels = new Map<string, HTMLDivElement>();
+  const labels = new Map<string, HTMLButtonElement>();
+  /** The loc whose hover card is open (its first instance's label), if any. */
+  let cardLoc: string | null = null;
+  let closeTimer = 0;
+  const card = createCard(layer, {
+    open: (item) => requestOpen(item.path, item.line),
+    mark: (item) => requestMark(item.hunkIds),
+  });
+  const openCard = (loc: string) => {
+    window.clearTimeout(closeTimer);
+    cardLoc = loc;
+    // Right after its label in the DOM, so the next Tab reaches the card's buttons. Not moved
+    // while focus is inside it: moving a node drops its focus.
+    const label = labels.get(`${loc}\n0`);
+    const active = root.activeElement;
+    if (label && label.nextElementSibling !== card.element && !(active && card.element.contains(active))) label.after(card.element);
+    schedule();
+  };
+  const closeCard = (focusLabel: boolean) => {
+    window.clearTimeout(closeTimer);
+    const label = cardLoc === null ? undefined : labels.get(`${cardLoc}\n0`);
+    cardLoc = null;
+    card.hide();
+    for (const l of labels.values()) l.setAttribute('aria-expanded', 'false');
+    if (focusLabel) label?.focus();
+    schedule();
+  };
+  /** Close after a short delay unless the pointer or focus is on the label or the card. */
+  const closeSoon = () => {
+    window.clearTimeout(closeTimer);
+    closeTimer = window.setTimeout(() => {
+      const label = cardLoc === null ? undefined : labels.get(`${cardLoc}\n0`);
+      const active = root.activeElement;
+      const inside = (el: Element | undefined) => !!el && (el.matches(':hover') || (active !== null && el.contains(active)));
+      if (!inside(label) && !inside(card.element)) closeCard(false);
+    }, 250);
+  };
+  card.element.addEventListener('mouseenter', () => window.clearTimeout(closeTimer));
+  card.element.addEventListener('mouseleave', closeSoon);
+  card.element.addEventListener('focusout', closeSoon);
   const labelTexts = new Map<string, string>();
   const observed = new Set<Element>();
   const widths = new Map<string, number>();
@@ -159,6 +206,7 @@ export function startOverlayLayer(): OverlayLayer {
   };
 
   const setVisible = (next: boolean) => {
+    chosenVisible = next;
     visible = next;
     writeFlag(STORAGE_KEY, next);
     renderEye();
@@ -176,7 +224,9 @@ export function startOverlayLayer(): OverlayLayer {
       if (loc) scrollTo(loc);
     },
     setVisible,
+    panelToggled: () => schedule(),
     setHideSeen(next) {
+      chosenHideSeen = next;
       hideSeen = next;
       writeFlag(HIDE_SEEN_KEY, next);
       schedule();
@@ -194,6 +244,7 @@ export function startOverlayLayer(): OverlayLayer {
 
   function draw(): void {
     frame = 0;
+    const drawStart = performance.now();
     if (!host.isConnected && document.body) document.body.append(host);
 
     // Read: find and measure every changed element on the page.
@@ -217,8 +268,14 @@ export function startOverlayLayer(): OverlayLayer {
         const n = instances.get(item.loc) ?? 0;
         instances.set(item.loc, n + 1);
         const rect = { left: r.left, top: r.top, width: r.width, height: r.height };
-        present.set(item.loc, [...(present.get(item.loc) ?? []), rect]);
-        presentElements.set(item.loc, [...(presentElements.get(item.loc) ?? []), el]);
+        const rects = present.get(item.loc);
+        if (rects) {
+          rects.push(rect);
+          presentElements.get(item.loc)!.push(el);
+        } else {
+          present.set(item.loc, [rect]);
+          presentElements.set(item.loc, [el]);
+        }
         if (!visible || (hideSeen && item.status === 'seen') || !inViewport(rect, viewport, OFFSCREEN_MARGIN)) continue;
         // The browser never claims "seen": the ring shows only on what VS Code has not confirmed.
         const dwell = dwelling.get(el);
@@ -247,6 +304,7 @@ export function startOverlayLayer(): OverlayLayer {
       .map((b) => ({ key: b.key, box: b.rect, width: measureText(countingLocs.has(b.item.loc) ? COUNTING_TEXT : labelText(b.item)) }));
     const now = performance.now();
     const placed = placeLabels(requests, viewport);
+    const cardHeight = card.element.hidden ? 140 : card.element.getBoundingClientRect().height;
 
     // Write: update the boxes and labels, reusing nodes.
     const keepOutlines = new Set<string>();
@@ -272,9 +330,18 @@ export function startOverlayLayer(): OverlayLayer {
       keepLabels.add(b.key);
       let label = labels.get(b.key);
       if (!label) {
-        label = document.createElement('div');
+        label = document.createElement('button');
+        label.type = 'button';
         label.className = 'label';
         label.setAttribute('data-cs-label', '');
+        label.setAttribute('aria-expanded', 'false');
+        const el = label;
+        // Only labels react to the pointer: hover or focus shows the card, click keeps it open.
+        el.addEventListener('mouseenter', () => openCard(el.getAttribute('data-loc')!));
+        el.addEventListener('mouseleave', closeSoon);
+        el.addEventListener('focus', () => openCard(el.getAttribute('data-loc')!));
+        el.addEventListener('blur', closeSoon);
+        el.addEventListener('click', () => openCard(el.getAttribute('data-loc')!));
         labels.set(b.key, label);
         layer.append(label);
       }
@@ -292,9 +359,23 @@ export function startOverlayLayer(): OverlayLayer {
       label.toggleAttribute('data-counting', started !== undefined);
       label.toggleAttribute('data-flash', flashing.has(b.item.loc));
       label.style.cssText = `left:${spot.left}px;top:${spot.top}px;width:${spot.width}px`;
+      label.setAttribute('aria-expanded', String(cardLoc === b.item.loc));
     }
     prune(outlines, keepOutlines);
     prune(labels, keepLabels);
+
+    // The card follows its label; it closes when the label is gone (scrolled away, hidden, removed).
+    const cardItem = cardLoc === null ? undefined : byLoc.get(cardLoc);
+    const cardSpot = cardLoc === null ? undefined : placed.get(`${cardLoc}\n0`);
+    if (cardItem && cardSpot) {
+      card.show(cardItem);
+      const at = placeCard(cardSpot, cardHeight, viewport);
+      card.element.style.left = `${at.left}px`;
+      card.element.style.top = `${at.top}px`;
+    } else if (cardLoc !== null) {
+      cardLoc = null;
+      card.hide();
+    }
 
     lastPresent = present;
     lastElements = presentElements;
@@ -302,10 +383,11 @@ export function startOverlayLayer(): OverlayLayer {
     finder.update({
       overlay,
       counts: edgeCounts(items, present, viewport),
-      sections: panelSections({ items }, present, location.pathname, viewport),
+      sections: finder.panelOpen() ? panelSections({ items }, present, location.pathname, viewport) : undefined,
       visible,
       hideSeen,
     });
+    if (timing) performance.measure(DRAW_MEASURE, { start: drawStart });
   }
 
   // Changes in the app's DOM may move or resize changed elements. Our own nodes live in the shadow
@@ -317,6 +399,13 @@ export function startOverlayLayer(): OverlayLayer {
   mutations.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: [ATTR, 'class', 'style'] });
 
   const onKey = (event: KeyboardEvent) => {
+    // Escape closes the card, else the panel, wherever focus is (only when one is open).
+    if (event.key === 'Escape' && !event.altKey && !event.ctrlKey && !event.metaKey) {
+      const focusInCard = root.activeElement !== null && card.element.contains(root.activeElement);
+      if (cardLoc !== null) closeCard(focusInCard || root.activeElement?.hasAttribute('data-cs-label') === true);
+      else if (finder.panelOpen()) finder.closePanel(root.activeElement !== null);
+      return;
+    }
     if (!event.altKey || !event.shiftKey || event.ctrlKey || event.metaKey || event.code !== 'KeyS') return;
     if (isEditable(event.target)) return;
     event.preventDefault();
@@ -329,6 +418,13 @@ export function startOverlayLayer(): OverlayLayer {
   const unsubscribe = onOverlay((message: OverlayMessage) => {
     overlay = message;
     items = message.items;
+    if (message.settings) {
+      if (chosenVisible === null && visible !== message.settings.showByDefault) {
+        visible = message.settings.showByDefault;
+        renderEye();
+      }
+      if (chosenHideSeen === null) hideSeen = message.settings.hideSeen;
+    }
     // Flash what VS Code just confirmed as seen; never on the first overlay after page load.
     const previous = lastStatus;
     lastStatus = new Map(items.map((i) => [i.loc, i.status]));

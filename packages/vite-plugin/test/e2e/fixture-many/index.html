@@ -1,0 +1,30 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <title>500 changed elements</title>
+    <style>
+      body { margin: 0; font: 14px sans-serif; }
+      .grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 24px; padding: 40px; }
+      .cell { height: 60px; background: #eee; }
+      /* ?dense: all 500 on screen at once */
+      .dense .grid { grid-template-columns: repeat(25, 1fr); gap: 4px; padding: 8px; }
+      .dense .cell { height: 24px; font-size: 9px; overflow: hidden; }
+    </style>
+  </head>
+  <body>
+    <div class="grid" id="grid"></div>
+    <script>
+      // 500 tagged elements, as a component library page with many changed cards would have.
+      const grid = document.getElementById('grid');
+      if (location.search.includes('dense')) document.body.classList.add('dense');
+      for (let i = 0; i < 500; i++) {
+        const el = document.createElement('div');
+        el.className = 'cell';
+        el.setAttribute('data-cs-loc', `src/cards/Card${i}.tsx:${i + 1}-${i + 1}`);
+        el.textContent = `card ${i}`;
+        grid.append(el);
+      }
+    </script>
+  </body>
+</html>

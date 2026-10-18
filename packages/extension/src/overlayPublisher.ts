@@ -1,6 +1,6 @@
 // Keeps connected dev servers up to date with the overlay. No vscode import, timers injected, so
 // the debounce is unit-tested.
-import type { OverlayMessage } from '@change-spotlight/core';
+import type { OverlayMessage, OverlaySettings } from '@change-spotlight/core';
 import { buildOverlay } from './overlay';
 import type { SeenState } from './seenController';
 
@@ -15,6 +15,7 @@ const realTimers: PublisherTimers = { setTimeout: (fn, ms) => setTimeout(fn, ms)
 
 export class OverlayPublisher {
   private state: SeenState | undefined;
+  private settings: OverlaySettings | undefined;
   private timer: unknown;
 
   constructor(
@@ -30,11 +31,17 @@ export class OverlayPublisher {
     this.timer = this.timers.setTimeout(() => this.flush(), this.delayMs);
   }
 
+  /** The overlay settings changed: pages pick them up with the next overlay, sent right away. */
+  setSettings(settings: OverlaySettings): void {
+    this.settings = { ...settings };
+    if (this.state) this.flush();
+  }
+
   /** A dev server just connected: send what we have right away. */
   flush(): void {
     this.timers.clearTimeout(this.timer);
     this.timer = undefined;
-    if (this.state) this.send(buildOverlay(this.state));
+    if (this.state) this.send(buildOverlay(this.state, this.settings));
   }
 
   dispose(): void {
