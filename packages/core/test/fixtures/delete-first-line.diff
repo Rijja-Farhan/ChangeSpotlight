@@ -1,0 +1,6 @@
+diff --git a/a.txt b/a.txt
+index c9e9e05..3b3c186 100644
+--- a/a.txt
++++ b/a.txt
+@@ -1 +0,0 @@
+-one

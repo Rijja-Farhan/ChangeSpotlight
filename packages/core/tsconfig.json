@@ -1,5 +1,7 @@
 {
   "extends": "../../tsconfig.base.json",
-  "compilerOptions": { "rootDir": "src", "outDir": "dist" },
+  // core must stay pure (no Node, DOM or VS Code APIs) so it runs in the extension,
+  // the Vite plugin and the browser client. lib, types and noUncheckedSideEffectImports make any such use a type error.
+  "compilerOptions": { "rootDir": "src", "outDir": "dist", "lib": ["ES2022"], "types": [], "noUncheckedSideEffectImports": true },
   "include": ["src"]
 }

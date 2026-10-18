@@ -1,0 +1,14 @@
+diff --git a/src/a.ts b/src/a.ts
+index c9e9e05..ba8f42d 100644
+--- a/src/a.ts
++++ b/src/a.ts
+@@ -2 +2 @@ one
+-two
++TWO
+diff --git a/src/b.ts b/src/b.ts
+index c9e9e05..484b9ca 100644
+--- a/src/b.ts
++++ b/src/b.ts
+@@ -9 +9 @@ eight
+-nine
++NINE

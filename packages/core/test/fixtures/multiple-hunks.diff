@@ -1,0 +1,14 @@
+diff --git a/a.txt b/a.txt
+index c9e9e05..db23df0 100644
+--- a/a.txt
++++ b/a.txt
+@@ -1 +1 @@
+-one
++ONE
+@@ -4 +3,0 @@ three
+-four
+@@ -8,0 +8 @@ eight
++eight-a
+@@ -10 +10 @@ nine
+-ten
++TEN

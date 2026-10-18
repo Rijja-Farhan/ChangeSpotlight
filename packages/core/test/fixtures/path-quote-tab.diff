@@ -1,0 +1,7 @@
+diff --git "a/we\"ird\tname.txt" "b/we\"ird\tname.txt"
+index c9e9e05..ba8f42d 100644
+--- "a/we\"ird\tname.txt"
++++ "b/we\"ird\tname.txt"
+@@ -2 +2 @@ one
+-two
++TWO

@@ -1,0 +1,7 @@
+diff --git a/a.md b/a.md
+index 0c9efd3..ba1c2f8 100644
+--- a/a.md
++++ b/a.md
+@@ -2 +2 @@ intro
+--- x
++++ x

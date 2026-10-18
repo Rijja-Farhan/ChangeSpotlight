@@ -8,8 +8,8 @@ They describe only code that exists in the repo. The plan lives in `.claude/PLAN
 | Phase | Topic | Note | Status |
 |---|---|---|---|
 | 0 | Skeleton: pnpm workspace, shared tsconfig, three empty packages | [00-monorepo-skeleton.md](00-monorepo-skeleton.md) | done |
-| 1 | Spikes: extension gutter dots, plugin tagging, HMR bridge | - | not started |
-| 2 | `core`: diff parsing, range matching, protocol types | - | not started |
+| 1 | Spikes: extension gutter dots, plugin tagging, HMR bridge | [01-extension-spike.md](01-extension-spike.md), [01-plugin-spike.md](01-plugin-spike.md), [01-bridge-spike.md](01-bridge-spike.md) | done |
+| 2 | `core`: diff parsing, range matching, protocol types | [02-core.md](02-core.md) | done |
 | 3 | Extension git layer | - | not started |
 | 4 | Vite plugin transform (real version) | - | not started |
 | 5 | Browser sensor | - | not started |

@@ -1,0 +1,6 @@
+{
+  "extends": "./tsconfig.json",
+  // Tests and the fixture script run in Node, so they get Node types; the build does not.
+  "compilerOptions": { "rootDir": ".", "noEmit": true, "types": ["node"] },
+  "include": ["src", "test"]
+}
