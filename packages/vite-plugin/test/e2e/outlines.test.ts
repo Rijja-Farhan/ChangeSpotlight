@@ -104,6 +104,9 @@ describe.skipIf(!existsSync(chrome))('outlines in headless Chrome', () => {
     const page = await browser.newPage({ viewport: { width, height } });
     await page.goto(url);
     await waitFor(async () => (await count(page, '[data-cs-outline]')) > 0);
+    // Elements on screen are being counted at first (blue "looking…"); wait for their own labels.
+    await page.waitForTimeout(400);
+    await waitFor(async () => (await count(page, '[data-counting]')) === 0);
     return page;
   };
 

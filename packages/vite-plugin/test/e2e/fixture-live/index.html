@@ -1,0 +1,20 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <title>live states fixture</title>
+    <style>
+      body { margin: 0; font: 16px sans-serif; }
+      .box { height: 100px; margin: 40px; background: #eee; }
+      .spacer { height: 2000px; }
+    </style>
+  </head>
+  <body>
+    <div class="box" data-cs-loc="src/Top.tsx:1-1">top (already seen)</div>
+    <div class="spacer"></div>
+    <div class="box" id="pass" data-cs-loc="src/Pass.tsx:2-2">passed quickly</div>
+    <div class="spacer"></div>
+    <div class="box" id="target" data-cs-loc="src/Target.tsx:3-3">target</div>
+    <div style="height: 300px"></div>
+  </body>
+</html>

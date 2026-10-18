@@ -178,3 +178,73 @@ describe('SeenTracker', () => {
     ]);
   });
 });
+
+describe('dwell events', () => {
+  const tracked = () => {
+    const events: [string, string, boolean][] = [];
+    const t = new SeenTracker<string>({
+      timers: { setTimeout: (fn, ms) => setTimeout(fn, ms), clearTimeout: (h) => clearTimeout(h as ReturnType<typeof setTimeout>) },
+      page: '/',
+      canCommit: (k) => canCommit(k),
+      onBatch: (b) => batches.push(b),
+      onDwell: (key, loc, active) => events.push([key, loc, active]),
+    });
+    return { t, events };
+  };
+
+  it('reports a dwell starting and ending when it commits', () => {
+    const { t, events } = tracked();
+    t.update('a', visible('a:1-1'));
+    t.update('a', visible('a:1-1', { ratio: 0.9 })); // still dwelling: no second start
+    expect(events).toEqual([['a', 'a:1-1', true]]);
+    vi.advanceTimersByTime(300);
+    expect(events).toEqual([
+      ['a', 'a:1-1', true],
+      ['a', 'a:1-1', false],
+    ]);
+  });
+
+  it('reports the end when scrolled away, removed or the tab loses focus', () => {
+    const { t, events } = tracked();
+    t.update('a', visible('a:1-1'));
+    t.update('a', visible('a:1-1', { ratio: 0 }));
+    t.update('b', visible('b:1-1'));
+    t.remove('b');
+    t.update('c', visible('c:1-1'));
+    t.setActive(false);
+    expect(events.map(([k, , active]) => `${k}${active ? '+' : '-'}`)).toEqual(['a+', 'a-', 'b+', 'b-', 'c+', 'c-']);
+    settle();
+    expect(batches).toEqual([]);
+  });
+
+  it('ends with the old loc when the loc changes, and pairs every start with an end', () => {
+    const { t, events } = tracked();
+    t.update('a', visible('a:1-1'));
+    t.update('a', visible('a:5-5'));
+    expect(events).toEqual([
+      ['a', 'a:1-1', true],
+      ['a', 'a:1-1', false],
+      ['a', 'a:5-5', true],
+    ]);
+    t.setPage('/next');
+    vi.advanceTimersByTime(300);
+    t.flush();
+    const open = new Map<string, number>();
+    for (const [key, , active] of events) {
+      open.set(key, (open.get(key) ?? 0) + (active ? 1 : -1));
+      expect(open.get(key)).toBeGreaterThanOrEqual(0);
+      expect(open.get(key)).toBeLessThanOrEqual(1);
+    }
+    expect([...open.values()].every((n) => n === 0)).toBe(true);
+  });
+
+  it('does not start a dwell for an element already reported on this page', () => {
+    const { t, events } = tracked();
+    t.update('a', visible('a:1-1'));
+    settle();
+    t.update('a', visible('a:1-1', { ratio: 0 }));
+    events.length = 0;
+    t.update('a', visible('a:1-1'));
+    expect(events).toEqual([]);
+  });
+});

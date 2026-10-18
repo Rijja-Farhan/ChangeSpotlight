@@ -34,6 +34,8 @@ export interface SeenTrackerOptions<K> {
   /** Final check when the dwell completes (e.g. checkVisibility for opacity/visibility). */
   canCommit?: (key: K) => boolean;
   onBatch: (batch: Batch) => void;
+  /** A dwell started (true) or ended (false: committed, cancelled or element gone). For the overlay's ring. */
+  onDwell?: (key: K, loc: string, active: boolean) => void;
 }
 
 export function qualifies(o: Observation): boolean {
@@ -59,8 +61,9 @@ export class SeenTracker<K> {
   /** New intersection data for an element. */
   update(key: K, observation: Observation): void {
     const previous = this.observations.get(key);
-    this.observations.set(key, observation);
+    // Cancel before storing, so the dwell-end event carries the loc that was being counted.
     if (previous && previous.loc !== observation.loc) this.cancel(key);
+    this.observations.set(key, observation);
     this.evaluate(key);
   }
 
@@ -114,11 +117,13 @@ export class SeenTracker<K> {
     if (pending) return;
     const handle = this.options.timers.setTimeout(() => this.commit(key), DWELL_MS);
     this.dwell.set(key, handle);
+    this.options.onDwell?.(key, o.loc, true);
   }
 
   private commit(key: K): void {
     this.dwell.delete(key);
     const o = this.observations.get(key);
+    if (o) this.options.onDwell?.(key, o.loc, false);
     if (!o || !this.active || !qualifies(o)) return;
     if (this.options.canCommit && !this.options.canCommit(key)) return;
     const pair = this.pairOf(o.loc);
@@ -135,6 +140,7 @@ export class SeenTracker<K> {
     if (!this.dwell.has(key)) return;
     this.options.timers.clearTimeout(this.dwell.get(key));
     this.dwell.delete(key);
+    this.options.onDwell?.(key, this.observations.get(key)?.loc ?? '', false);
   }
 
   private pairOf(loc: string): string {

@@ -6,6 +6,8 @@
 import type { OverlayItem, OverlayMessage } from '@change-spotlight/core';
 import { inViewport, LABEL_HEIGHT, labelText, placeLabels, type LabelRequest, type Rect } from './outlines.js';
 import { onOverlay } from './overlayData.js';
+import { COUNTING_TEXT, flashLocs, isCounting, ringOffset } from './live.js';
+import { DWELL_MS } from './seen.js';
 
 export const HOST_TAG = 'change-spotlight-overlay';
 export const STORAGE_KEY = 'change-spotlight:outlines';
@@ -13,6 +15,9 @@ const ATTR = 'data-cs-loc';
 const FONT = '12px ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace';
 /** Outlines further than this outside the viewport are not drawn. */
 const OFFSCREEN_MARGIN = 200;
+/** How long a newly seen outline flashes green. */
+export const FLASH_MS = 700;
+const RING_LENGTH = 28.3; // circumference of the r=4.5 ring
 
 const STYLE = `
 :host { all: initial; }
@@ -25,6 +30,18 @@ const STYLE = `
 .label[data-status="unseen"], .label[data-status="partly"] { background: #b45309; }
 .label[data-status="seen"] { background: #15803d; }
 .label svg { flex: none; }
+.outline[data-counting] { outline: 2px solid #1f4fd1; box-shadow: none; }
+.label[data-counting] { background: #1f4fd1; }
+.ring-fill { stroke-dasharray: ${RING_LENGTH}; stroke-dashoffset: ${RING_LENGTH}; animation: cs-fill ${DWELL_MS}ms linear forwards; }
+@keyframes cs-fill { to { stroke-dashoffset: 0; } }
+.outline[data-flash] { animation: cs-flash ${FLASH_MS}ms ease-out; }
+.label[data-flash] { animation: cs-flash-label ${FLASH_MS}ms ease-out; }
+@keyframes cs-flash-label { 0% { box-shadow: 0 0 0 0 rgba(21, 128, 61, 0.55); } 100% { box-shadow: 0 0 0 8px rgba(21, 128, 61, 0); } }
+@keyframes cs-flash { 0% { box-shadow: 0 0 0 0 rgba(21, 128, 61, 0.55); } 100% { box-shadow: 0 0 0 14px rgba(21, 128, 61, 0); } }
+@media (prefers-reduced-motion: reduce) {
+  .outline[data-flash], .label[data-flash] { animation: none; }
+  .ring-fill { animation: none; stroke-dashoffset: ${RING_LENGTH / 2}; }
+}
 .eye { position: fixed; right: 20px; bottom: 20px; width: 40px; height: 40px; border: 0; border-radius: 20px; padding: 0; margin: 0;
   display: flex; align-items: center; justify-content: center; background: #1d1c1a; color: #f6f5f2; cursor: pointer;
   box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25); pointer-events: auto; }
@@ -38,6 +55,11 @@ const ICONS: Record<OverlayItem['status'], string> = {
   partly: '<svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><circle cx="5" cy="5" r="3.5" fill="none" stroke="#ffffff" stroke-width="1.5"/><path d="M5 1.5a3.5 3.5 0 0 1 0 7z" fill="#ffffff"/></svg>',
   seen: '<svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 6.2l2.3 2.3L9.5 3.8" fill="none" stroke="#ffffff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>',
 };
+/** The ring that fills while the sensor counts an element; `elapsed` ms of the dwell are already done. */
+const ring = (elapsed: number) =>
+  `<svg data-cs-ring width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><circle cx="6" cy="6" r="4.5" fill="none" stroke="#8aa6ec" stroke-width="2"/>` +
+  `<circle class="ring-fill" cx="6" cy="6" r="4.5" fill="none" stroke="#ffffff" stroke-width="2" stroke-linecap="round" transform="rotate(-90 6 6)" style="animation-delay:-${Math.round(elapsed)}ms"/></svg>`;
+
 /** Icon width + gap + horizontal padding, added to the measured text width. */
 const LABEL_CHROME = 12 + 6 + 16;
 
@@ -49,6 +71,8 @@ const EYE_CLOSED =
 export interface OverlayLayer {
   /** Re-measure on the next frame (e.g. after HMR). */
   refresh(): void;
+  /** The sensor started (true) or stopped (false) counting this element. */
+  setDwell(el: Element, active: boolean): void;
   setVisible(visible: boolean): void;
   stop(): void;
 }
@@ -83,6 +107,13 @@ export function startOverlayLayer(): OverlayLayer {
   const eye = root.querySelector('.eye') as HTMLButtonElement;
 
   let items: OverlayItem[] = [];
+  /** Elements the sensor is counting right now -> when it started (performance.now()). */
+  const dwelling = new Map<Element, number>();
+  /** Last status VS Code sent per loc, to spot the switch to "seen". */
+  let lastStatus: Map<string, OverlayItem['status']> | undefined;
+  /** loc -> when its flash ends. */
+  const flashing = new Map<string, number>();
+  const reducedMotion = typeof matchMedia === 'function' ? matchMedia('(prefers-reduced-motion: reduce)') : undefined;
   let visible = readVisible();
   let frame = 0;
   /** Drawn nodes by key ("loc\n<instance>"), reused across frames. */
@@ -139,7 +170,9 @@ export function startOverlayLayer(): OverlayLayer {
     // Read: find and measure every changed element on the page.
     const viewport = { width: document.documentElement.clientWidth || window.innerWidth, height: document.documentElement.clientHeight || window.innerHeight };
     const byLoc = new Map(items.map((item) => [item.loc, item]));
-    const boxes: { key: string; item: OverlayItem; rect: Rect; labelled: boolean }[] = [];
+    const boxes: { key: string; item: OverlayItem; rect: Rect; labelled: boolean; counting: boolean }[] = [];
+    /** Locs with at least one instance being counted (its label shows the ring). */
+    const countingLocs = new Map<string, number>();
     const elements = new Set<Element>();
     if (visible && byLoc.size > 0) {
       const instances = new Map<string, number>();
@@ -153,9 +186,15 @@ export function startOverlayLayer(): OverlayLayer {
         instances.set(item.loc, n + 1);
         const rect = { left: r.left, top: r.top, width: r.width, height: r.height };
         if (!inViewport(rect, viewport, OFFSCREEN_MARGIN)) continue;
-        boxes.push({ key: `${item.loc}\n${n}`, item, rect, labelled: n === 0 });
+        // The browser never claims "seen": the ring shows only on what VS Code has not confirmed.
+        const dwell = dwelling.get(el);
+        const started = isCounting(item.status, dwell) ? dwell : undefined;
+        if (started !== undefined) countingLocs.set(item.loc, Math.min(started, countingLocs.get(item.loc) ?? Infinity));
+        boxes.push({ key: `${item.loc}\n${n}`, item, rect, labelled: n === 0, counting: started !== undefined });
       }
     }
+
+    for (const el of dwelling.keys()) if (!el.isConnected) dwelling.delete(el);
 
     // Keep ResizeObserver on exactly the changed elements.
     for (const el of observed) {
@@ -171,7 +210,8 @@ export function startOverlayLayer(): OverlayLayer {
 
     const requests: LabelRequest[] = boxes
       .filter((b) => b.labelled && inViewport(b.rect, viewport))
-      .map((b) => ({ key: b.key, box: b.rect, width: measureText(labelText(b.item)) }));
+      .map((b) => ({ key: b.key, box: b.rect, width: measureText(countingLocs.has(b.item.loc) ? COUNTING_TEXT : labelText(b.item)) }));
+    const now = performance.now();
     const placed = placeLabels(requests, viewport);
 
     // Write: update the boxes and labels, reusing nodes.
@@ -189,6 +229,8 @@ export function startOverlayLayer(): OverlayLayer {
       }
       box.setAttribute('data-loc', b.item.loc);
       box.setAttribute('data-status', b.item.status);
+      box.toggleAttribute('data-counting', b.counting);
+      box.toggleAttribute('data-flash', flashing.has(b.item.loc));
       box.style.cssText = `left:${b.rect.left}px;top:${b.rect.top}px;width:${b.rect.width}px;height:${b.rect.height}px`;
 
       const spot = placed.get(b.key);
@@ -202,14 +244,19 @@ export function startOverlayLayer(): OverlayLayer {
         labels.set(b.key, label);
         layer.append(label);
       }
-      const text = labelText(b.item);
-      if (labelTexts.get(b.key) !== `${b.item.status}\n${text}`) {
-        labelTexts.set(b.key, `${b.item.status}\n${text}`);
-        label.innerHTML = ICONS[b.item.status];
+      const started = countingLocs.get(b.item.loc);
+      const text = started !== undefined ? COUNTING_TEXT : labelText(b.item);
+      // Rebuild only when the content changes, so a running ring animation is not restarted.
+      const content = `${started ?? b.item.status}\n${text}`;
+      if (labelTexts.get(b.key) !== content) {
+        labelTexts.set(b.key, content);
+        label.innerHTML = started !== undefined ? ring(ringOffset(started, now)) : ICONS[b.item.status];
         label.append(text);
       }
       label.setAttribute('data-loc', b.item.loc);
       label.setAttribute('data-status', b.item.status);
+      label.toggleAttribute('data-counting', started !== undefined);
+      label.toggleAttribute('data-flash', flashing.has(b.item.loc));
       label.style.cssText = `left:${spot.left}px;top:${spot.top}px;width:${spot.width}px`;
     }
     prune(outlines, keepOutlines);
@@ -236,8 +283,22 @@ export function startOverlayLayer(): OverlayLayer {
   window.addEventListener('keydown', onKey, true);
   const unsubscribe = onOverlay((overlay: OverlayMessage) => {
     items = overlay.items;
+    // Flash what VS Code just confirmed as seen; never on the first overlay after page load.
+    const previous = lastStatus;
+    lastStatus = new Map(items.map((i) => [i.loc, i.status]));
+    const turned = reducedMotion?.matches ? [] : flashLocs(previous, items);
+    if (turned.length > 0) {
+      const until = performance.now() + FLASH_MS;
+      for (const loc of turned) flashing.set(loc, until);
+      window.setTimeout(endFlashes, FLASH_MS + 20);
+    }
     schedule();
   });
+  function endFlashes(): void {
+    const now = performance.now();
+    for (const [loc, until] of flashing) if (until <= now) flashing.delete(loc);
+    schedule();
+  }
 
   renderEye();
   document.body.append(host);
@@ -245,6 +306,11 @@ export function startOverlayLayer(): OverlayLayer {
 
   return {
     refresh: schedule,
+    setDwell(el, active) {
+      if (active) dwelling.set(el, performance.now());
+      else dwelling.delete(el);
+      schedule();
+    },
     setVisible,
     stop() {
       cancelAnimationFrame(frame);

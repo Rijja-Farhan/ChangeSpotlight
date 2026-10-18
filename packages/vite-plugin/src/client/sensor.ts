@@ -12,13 +12,15 @@ export interface Sensor {
   stop(): void;
 }
 
-export function startSensor(onBatch: (batch: Batch) => void): Sensor {
+/** `onDwell`: an element started (true) or stopped (false) being counted, for the overlay's ring. */
+export function startSensor(onBatch: (batch: Batch) => void, onDwell?: (el: Element, active: boolean) => void): Sensor {
   const tracker = new SeenTracker<Element>({
     timers: { setTimeout: (fn, ms) => window.setTimeout(fn, ms), clearTimeout: (h) => window.clearTimeout(h as number) },
     page: location.pathname,
     canCommit: (el) =>
       el.isConnected && (typeof el.checkVisibility !== 'function' || el.checkVisibility({ opacityProperty: true, visibilityProperty: true })),
     onBatch,
+    ...(onDwell ? { onDwell: (el: Element, _loc: string, active: boolean) => onDwell(el, active) } : {}),
   });
 
   const io = new IntersectionObserver(

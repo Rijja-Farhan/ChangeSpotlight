@@ -15,14 +15,20 @@ export function startClient({ protocolVersion, hot }: { protocolVersion: number;
   if (!hot) return; // no HMR channel: nowhere to report to
   connectOverlay(hot, protocolVersion);
   let layer: OverlayLayer | undefined;
-  const startLayer = () => (layer = startOverlayLayer());
+  /** Dwells that start before the layer exists (no <body> yet) are replayed once it does. */
+  const early = new Map<Element, boolean>();
+  const startLayer = () => {
+    layer = startOverlayLayer();
+    for (const [el, active] of early) if (active) layer.setDwell(el, true);
+    early.clear();
+  };
   if (document.body) startLayer();
   else document.addEventListener('DOMContentLoaded', startLayer, { once: true });
 
   const sensor = startSensor((batch) => {
     const message: VisibilityMessage = { protocolVersion, type: 'visibility', page: batch.page, seen: batch.seen };
     hot.send('cs:visibility', message);
-  });
+  }, (el, active) => (layer ? layer.setDwell(el, active) : early.set(el, active)));
   // After a hot update the changed code may sit in an element whose range did not change; report
   // everything visible again so the extension can match it to the new change.
   hot.on?.('vite:afterUpdate', () => {
