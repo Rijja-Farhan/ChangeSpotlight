@@ -25,6 +25,8 @@ describe('package.json contributions', () => {
 
   it('points at icons that exist', () => {
     const icons = [
+      pkg.icon, // Marketplace icon: must be a PNG, the Marketplace rejects SVG
+
       ...pkg.contributes.viewsContainers.activitybar.map((c: { icon: string }) => c.icon),
       // gutter.ts builds these names from the three mark styles
       ...['unseen', 'seen', 'untrackable'].flatMap((n) => [`media/gutter-${n}-light.svg`, `media/gutter-${n}-dark.svg`]),

@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1d2a5c"/>
+      <stop offset="1" stop-color="#111a3d"/>
+    </linearGradient>
+    <linearGradient id="beam" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffd54a" stop-opacity="0.95"/>
+      <stop offset="1" stop-color="#f5a524" stop-opacity="0.35"/>
+    </linearGradient>
+    <radialGradient id="pool" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#ffc83d" stop-opacity="0.9"/>
+      <stop offset="1" stop-color="#ffc83d" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="7" result="blur"/>
+      <feFlood flood-color="#ffd54a" flood-opacity="0.8"/>
+      <feComposite in2="blur" operator="in"/>
+      <feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <clipPath id="tile">
+      <rect x="10" y="10" width="236" height="236" rx="50"/>
+    </clipPath>
+  </defs>
+  <!-- Tile with a lighter rim -->
+  <rect x="4" y="4" width="248" height="248" rx="56" fill="#2a3a78"/>
+  <rect x="10" y="10" width="236" height="236" rx="50" fill="url(#bg)"/>
+  <g clip-path="url(#tile)">
+    <!-- A row of the page, behind the beam -->
+    <rect x="34" y="112" width="188" height="46" rx="8" fill="#7f90d6" fill-opacity="0.32"/>
+    <!-- Beam -->
+    <path d="M114 62 L142 62 L192 206 L64 206 Z" fill="url(#beam)"/>
+    <!-- Pool of light -->
+    <ellipse cx="128" cy="204" rx="74" ry="16" fill="url(#pool)"/>
+  </g>
+  <!-- Ceiling lamp -->
+  <rect x="122" y="18" width="12" height="22" rx="4" fill="#e9ecf5"/>
+  <path d="M106 62 Q106 38 128 38 Q150 38 150 62 Z" fill="#f4f6fb"/>
+  <rect x="104" y="58" width="48" height="6" rx="3" fill="#cfd5e6"/>
+  <!-- The changed element, lit up -->
+  <g filter="url(#glow)">
+    <rect x="102" y="104" width="52" height="66" rx="8" fill="#fff4cc"/>
+  </g>
+  <rect x="112" y="118" width="32" height="6" rx="3" fill="#f0a91c"/>
+  <rect x="112" y="132" width="32" height="6" rx="3" fill="#f0a91c"/>
+  <rect x="112" y="146" width="22" height="6" rx="3" fill="#f0a91c"/>
+</svg>

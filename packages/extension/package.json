@@ -2,9 +2,14 @@
   "name": "change-spotlight",
   "displayName": "Change Spotlight",
   "description": "Highlights the UI changes on your branch and tracks which ones you have actually looked at in the browser.",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "publisher": "change-spotlight",
+  "icon": "media/icon.png",
+  "galleryBanner": {
+    "color": "#1b2230",
+    "theme": "dark"
+  },
   "license": "MIT",
   "repository": {
     "type": "git",
