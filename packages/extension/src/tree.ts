@@ -28,6 +28,7 @@ const REASONS: Record<string, string> = {
   binary: 'binary file',
   'parse-error': 'could not be parsed',
   'no-element': 'not inside a rendered element',
+  excluded: 'excluded by the changeSpotlight.exclude setting',
 };
 
 function basename(path: string): string {

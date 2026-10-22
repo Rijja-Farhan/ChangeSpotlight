@@ -111,6 +111,22 @@ describe('SeenModel', () => {
     expect(m.totals()).toEqual({ seen: 0, total: 0, untrackable: 4 });
   });
 
+  it('lists excluded files as untrackable, before any other reason', () => {
+    const { m } = model();
+    m.update(
+      [file('a.tsx', [change(3, 1)]), file('a.test.tsx', [change(3, 1)]), file('old.test.tsx', [deletion(0)], { status: 'deleted' })],
+      new Map([['a.tsx', tree], ['a.test.tsx', tree]]),
+      (path) => path.includes('.test.'),
+    );
+    expect(m.hunks().map((h) => [h.path, h.status, h.reason])).toEqual([
+      ['a.tsx', 'unseen', undefined],
+      ['a.test.tsx', 'untrackable', 'excluded'],
+      ['old.test.tsx', 'untrackable', 'excluded'],
+    ]);
+    expect(m.totals()).toEqual({ seen: 0, total: 1, untrackable: 2 });
+    expect(m.markSeen('/', ['a.test.tsx:3-3']).changed).toBe(false);
+  });
+
   it('survives a snapshot round trip and keeps status when a hunk moves', () => {
     const { m, now } = model();
     m.update([file('a.tsx', [change(3, 1, ['hello'])])], new Map([['a.tsx', tree]]));

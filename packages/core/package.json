@@ -1,10 +1,20 @@
 {
   "name": "@change-spotlight/core",
-  "version": "0.0.0",
-  "private": true,
+  "version": "0.1.0",
   "type": "module",
+  "description": "Diff parsing, hunk matching, seen model and protocol types for Change Spotlight.",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
+  "files": [
+    "dist",
+    "src"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Rijja-Farhan/ChangeSpotlight.git",
+    "directory": "packages/core"
+  },
   "scripts": {
     "build": "tsc -p .",
     "typecheck": "tsc -p . --noEmit && tsc -p tsconfig.test.json",

@@ -3,7 +3,7 @@ export function Header({ title }: { title: string }) {
     <header className="header">
       <h1>{title}</h1>
       <nav>
-        <a href="#features">Features</a> · <a href="#pricing">Pricing</a>
+        <a href="#features">Featuresing</a> · <a href="#pricing">Pricing</a>
       </nav>
     </header>
   )

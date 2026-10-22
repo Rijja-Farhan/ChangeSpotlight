@@ -1,9 +1,16 @@
 {
   "name": "change-spotlight",
   "displayName": "Change Spotlight",
-  "version": "0.0.0",
+  "description": "Highlights the UI changes on your branch and tracks which ones you have actually looked at in the browser.",
+  "version": "0.1.0",
   "private": true,
   "publisher": "change-spotlight",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Rijja-Farhan/ChangeSpotlight.git",
+    "directory": "packages/extension"
+  },
   "engines": {
     "vscode": "^1.100.0"
   },
@@ -136,9 +143,15 @@
           "default": "",
           "markdownDescription": "Branch or ref to compare against (e.g. `main`, `origin/develop`). Empty = try `main`, `master`, `origin/main`, `origin/master` in that order."
         },
+        "changeSpotlight.exclude": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": ["**/test/**", "**/tests/**", "**/__tests__/**", "**/fixtures/**", "**/*.test.*", "**/*.spec.*", "**/*.stories.*"],
+          "markdownDescription": "Glob patterns for changed files that never count toward \"Seen X of Y\" (tests, fixtures, stories). They still show in the Changes view as not trackable. Paths are relative to the repository root. A pattern without `/` matches the file name in any folder, e.g. `*.mock.tsx`."
+        },
         "changeSpotlight.openOnClick": {
           "type": "boolean",
-          "default": false,
+          "default": true,
           "markdownDescription": "When you click an element in the browser, open its code in the editor (without taking focus)."
         },
         "changeSpotlight.overlay.showByDefault": {

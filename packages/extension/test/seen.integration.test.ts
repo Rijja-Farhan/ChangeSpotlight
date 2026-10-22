@@ -114,4 +114,18 @@ describe('seen flow', () => {
     expect(state().totals.seen).toBe(0);
     expect([...store.data.keys()]).toEqual([]);
   });
+
+  it('leaves excluded files out of the count, and counts them again once the pattern is gone', async () => {
+    featureRepo();
+    repo.write('src/App.test.tsx', app('Test'));
+    const { controller, state } = setup();
+    const changes = await computeChanges(repo.dir, '', exec);
+
+    await controller.applyResult(changes, ['**/*.test.*', 'src/App.tsx']);
+    expect(state().totals).toEqual({ seen: 0, total: 0, untrackable: 4 });
+    expect(state().hunks.filter((h) => h.reason === 'excluded').map((h) => h.path)).toEqual(['src/App.tsx', 'src/App.test.tsx']); // untracked files come last
+
+    await controller.applyResult(changes, ['**/*.test.*']);
+    expect(state().totals).toEqual({ seen: 0, total: 1, untrackable: 3 });
+  });
 });

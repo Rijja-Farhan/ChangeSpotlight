@@ -1,10 +1,20 @@
 {
   "name": "@change-spotlight/vite-plugin",
-  "version": "0.0.0",
-  "private": true,
+  "version": "0.1.0",
   "type": "module",
+  "description": "Vite plugin for Change Spotlight: tags changed JSX elements and shows which ones you have seen.",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
+  "files": [
+    "dist",
+    "src"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Rijja-Farhan/ChangeSpotlight.git",
+    "directory": "packages/vite-plugin"
+  },
   "scripts": {
     "build": "tsc -p .",
     "dev": "tsc -p . --watch",

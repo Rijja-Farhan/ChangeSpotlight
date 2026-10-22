@@ -1,6 +1,6 @@
 // Connects git results, browser visibility reports and storage to the SeenModel. No vscode import,
 // so the whole flow is tested against real temp repos.
-import { formatLoc, parseLoc, SeenModel, type HunkStatus, type SeenTotals } from '@change-spotlight/core';
+import { formatLoc, matchesAny, parseLoc, SeenModel, type HunkStatus, type SeenTotals } from '@change-spotlight/core';
 import { analyzeElements } from './elements';
 import type { ChangeResult } from './git';
 import type { SeenStore } from './seenStore';
@@ -33,8 +33,11 @@ export class SeenController {
     return { totals: this.model.totals(), hunks: this.model.hunks(), ...this.key };
   }
 
-  /** A fresh git result: re-read elements, rebuild the hunk list, then apply held-back reports. */
-  async applyResult(result: ChangeResult): Promise<void> {
+  /**
+   * A fresh git result: re-read elements, rebuild the hunk list, then apply held-back reports.
+   * `exclude`: glob patterns (changeSpotlight.exclude); matching files are listed but never counted.
+   */
+  async applyResult(result: ChangeResult, exclude: readonly string[] = []): Promise<void> {
     if (!result.ok) return;
     this.updating = true;
     try {
@@ -43,9 +46,11 @@ export class SeenController {
         this.model = new SeenModel(this.store.load(result.root, result.branch), this.now);
         this.lastTotals = '';
       }
-      const elements = await analyzeElements(result.root, result.files);
+      const excluded = (path: string) => matchesAny(path, exclude);
+      // Excluded files are never parsed: their elements cannot count anyway.
+      const elements = await analyzeElements(result.root, result.files.filter((f) => !excluded(f.path)));
       this.currentLocs = new Map([...elements].map(([file, els]) => [file, new Set((els ?? []).map(formatLoc))]));
-      this.model!.update(result.files, elements);
+      this.model!.update(result.files, elements, excluded);
     } finally {
       this.updating = false;
     }

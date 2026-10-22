@@ -6,7 +6,7 @@ export function Counter() {
     <section className="counter">
       <p>Count is {count}</p>
       <button type="button" onClick={() => setCount((c) => c + 1)}>
-        Increment
+        Incrementing
       </button>
     </section>
   )

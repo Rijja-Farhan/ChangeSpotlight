@@ -40,7 +40,7 @@ export class ChangeTracker implements vscode.Disposable {
       vscode.workspace.onDidDeleteFiles(trigger),
       vscode.workspace.onDidRenameFiles(trigger),
       vscode.workspace.onDidChangeConfiguration((e) => {
-        if (e.affectsConfiguration('changeSpotlight.baseBranch')) trigger();
+        if (e.affectsConfiguration('changeSpotlight.baseBranch') || e.affectsConfiguration('changeSpotlight.exclude')) trigger();
       }),
     );
   }

@@ -1,7 +1,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
-import { parseLoc } from '@change-spotlight/core';
+import { DEFAULT_EXCLUDE, parseLoc } from '@change-spotlight/core';
 import { connectBridge, type BridgeConnection } from './bridge';
 import { ChangeTracker } from './changeTracker';
 import { describeBase, findRepo, type ChangeResult } from './git';
@@ -94,11 +94,11 @@ async function start(context: vscode.ExtensionContext, tree: ChangesTreeProvider
     tracker.onDidChange((result) => {
       log(result, false);
       if (!result.ok) setStatus('error');
-      void seen.applyResult(result);
+      void seen.applyResult(result, vscode.workspace.getConfiguration('changeSpotlight').get<string[]>('exclude', [...DEFAULT_EXCLUDE]));
     }),
     bridge.onMessage(({ message }) => {
       if (message.type === 'visibility') void seen.visibility(message.page, message.seen, tracker.busy);
-      if (message.type === 'click' && vscode.workspace.getConfiguration('changeSpotlight').get<boolean>('openOnClick', false)) {
+      if (message.type === 'click' && vscode.workspace.getConfiguration('changeSpotlight').get<boolean>('openOnClick', true)) {
         void openClicked(root, message.loc);
       }
       if (message.type === 'open') void openRequested(root, message.path, message.line);

@@ -7,3 +7,4 @@ export * from './protocol.js';
 export * from './elements.js';
 export * from './hunkId.js';
 export * from './seenModel.js';
+export * from './glob.js';

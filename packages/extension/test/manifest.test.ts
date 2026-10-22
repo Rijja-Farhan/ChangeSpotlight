@@ -1,6 +1,7 @@
 // Static checks of package.json contributions, since there is no display to run VS Code in tests.
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import * as path from 'node:path';
+import { DEFAULT_EXCLUDE } from '@change-spotlight/core';
 import { describe, expect, it } from 'vitest';
 
 const root = path.resolve(__dirname, '..');
@@ -42,6 +43,10 @@ describe('package.json contributions', () => {
     const colors = new Set(pkg.contributes.colors.map((c: { id: string }) => c.id));
     for (const m of sources.matchAll(/ThemeColor\('([\w.]+)'\)/g)) expect(colors.has(m[1])).toBe(true);
     const settings = Object.keys(pkg.contributes.configuration.properties);
-    for (const m of sources.matchAll(/getConfiguration\('changeSpotlight'\)\.get<\w+>\('([\w.]+)'/g)) expect(settings).toContain(`changeSpotlight.${m[1]}`);
+    for (const m of sources.matchAll(/getConfiguration\('changeSpotlight'\)\.get<[\w[\]]+>\('([\w.]+)'/g)) expect(settings).toContain(`changeSpotlight.${m[1]}`);
+  });
+
+  it('defaults changeSpotlight.exclude to the patterns the code falls back to', () => {
+    expect(pkg.contributes.configuration.properties['changeSpotlight.exclude'].default).toEqual(DEFAULT_EXCLUDE);
   });
 });

@@ -3,7 +3,7 @@ import { hunkOwners, type HostElement } from './elements.js';
 import { hunkIds } from './hunkId.js';
 import { formatLoc } from './loc.js';
 
-export type UntrackableReason = 'not-jsx' | 'deleted-file' | 'binary' | 'parse-error' | 'no-element';
+export type UntrackableReason = 'not-jsx' | 'deleted-file' | 'binary' | 'parse-error' | 'no-element' | 'excluded';
 
 export interface HunkStatus {
   id: string;
@@ -67,8 +67,11 @@ export class SeenModel {
     if (snapshot?.version === 1) for (const [id, e] of Object.entries(snapshot.entries)) this.entries.set(id, { ...e });
   }
 
-  /** Rebuild the hunk list from a fresh diff. `elements`: per path; null = the file failed to parse. */
-  update(files: readonly DiffFile[], elements: ReadonlyMap<string, HostElement[] | null>): void {
+  /**
+   * Rebuild the hunk list from a fresh diff. `elements`: per path; null = the file failed to parse.
+   * `excluded`: files the user excluded (tests, fixtures, stories): listed, but never counted.
+   */
+  update(files: readonly DiffFile[], elements: ReadonlyMap<string, HostElement[] | null>, excluded: (path: string) => boolean = () => false): void {
     const now = this.now();
     this.statuses = [];
     this.byLoc = new Map();
@@ -76,15 +79,17 @@ export class SeenModel {
     for (const file of files) {
       const ids = hunkIds(file.path, file.hunks);
       const els = elements.get(file.path);
-      const fileReason: UntrackableReason | undefined = file.binary
-        ? 'binary'
-        : file.status === 'deleted'
-          ? 'deleted-file'
-          : !JSX_FILE.test(file.path)
-            ? 'not-jsx'
-            : els === null || els === undefined
-              ? 'parse-error'
-              : undefined;
+      const fileReason: UntrackableReason | undefined = excluded(file.path)
+        ? 'excluded'
+        : file.binary
+          ? 'binary'
+          : file.status === 'deleted'
+            ? 'deleted-file'
+            : !JSX_FILE.test(file.path)
+              ? 'not-jsx'
+              : els === null || els === undefined
+                ? 'parse-error'
+                : undefined;
 
       file.hunks.forEach((hunk, i) => {
         const id = ids[i]!;
