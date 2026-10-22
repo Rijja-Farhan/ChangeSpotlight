@@ -33,7 +33,7 @@ Change Spotlight has two parts: this extension and a Vite plugin.
 4. Open the **repository root** in VS Code, check out your branch and start the dev server
    (`npm run dev`). The extension and the dev server find each other on their own.
 
-Requirements: a git repository, Vite 8 or later, React with `.jsx`/`.tsx` files, and
+Requirements: a git repository, Vite 4 or later, React with `.jsx`/`.tsx` files, and
 VS Code 1.100 or later.
 
 ## What you get

@@ -23,7 +23,7 @@ export default defineConfig({
 })
 ```
 
-Works with both `@vitejs/plugin-react` and `@vitejs/plugin-react-swc`. Requires Vite 8 or later.
+Works with both `@vitejs/plugin-react` and `@vitejs/plugin-react-swc`. Requires Vite 4 or later (tested with 4, 5, 6, 7 and 8).
 
 Open the repository root in VS Code and run the dev server. The plugin and the extension find each
 other through a discovery file inside `.git/`.
